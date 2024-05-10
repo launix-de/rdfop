@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+<title>FOP II</title>
+<meta http-equiv="Content-Security-Policy" content="default-src localhost:4321" />
+<meta charset="utf-8">
+<script type="text/javascript" src="vue.js"></script>
+</head>
+<body>
+	<div id="app">
+	</div>
+	<script type="text/javascript">
+		document.body.onload = () => {
+			const { createApp, ref } = Vue;
+
+			/*
+			TODO:
+				- start with a node (#1 in URL)
+				- retrieve:
+				PREFIX lx: <https://launix.de/rdf#>
+				SELECT ?type, ?template
+				WHERE ?id lx:isa ?type; ?type lx:template ?template.
+				- syntax extension: SELECT returns a JSON list of JSON objects
+				- SELECT ONLY expr returns a JSON list
+				- SELECT ONE ... returns a JSON object
+				- GROUP BY ?a ?b
+				- ORDER BY DESC(?c)
+				- SELECT (COUNT(*) AS ?cnt)
+				- ttl file format
+				- xml file format
+			*/
+
+			createApp({
+				setup() {
+					return {
+						'whom': 'World'
+					}
+				},
+				template: 'Hello {{ whom }}!'
+			}).mount('#app')
+		};
+	</script>
+</body>
+</html>
