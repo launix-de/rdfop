@@ -1,5 +1,5 @@
 @prefix lx: <https://launix.de/rdf#>
 
-1 lx:isa main;
+1 lx:isa main.
 main lx:template "Hello World".
 
