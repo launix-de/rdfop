@@ -1,9 +1,3 @@
-PREFIX lx <https://launix.de/rdf/#>
-SELECT ?title, ?content WHERE {?page lx:isa lx:page; lx:title ?title; lx:content ?content}
+@PREFIX lx: <https://launix.de/rdf/#> .
 
-?><!doctype html><html><head>
-<title><?rdf PRINT HTML ?title ?></title>
-</head><body>
-<?rdf PRINT RAW ?content ?>
-</body></html>
-
+print raw "Hello World"

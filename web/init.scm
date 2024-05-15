@@ -14,7 +14,15 @@
   0. You just DO WHAT THE FUCK YOU WANT TO.
 */
 
-/* this module requires to load at least memcp/lib/rdf.scm first; better import memcp/lib/main.scm */
+/*
+
+template for an app
+
+
+
+this module requires to load at least memcp/lib/rdf.scm first; better import memcp/lib/main.scm
+
+*/
 
 /* TODO: move this to rdfop.scm, make it parameterizable (rdfop_serve schema folder port) */
 
@@ -23,14 +31,16 @@
 
 (load_ttl "rdf" (load "example.ttl")) /* read example ttl file */
 
+/* handcraftet main page */
 (rdfop_routes "/" (lambda (req res) (begin
 	(print "request " req)
 	((res "header") "Content-Type" "text/html")
 	((res "status") 200)
-	((res "println") "<h1>Welcome</h1>Go to <a href='example'>Example page</a>")
+	((res "print") "<h1>Welcome</h1>Go to <a href='example'>Example page</a>")
 )))
 
-(rdfop_route "/example" (load "example.rdfhp"))
+/* template scipt for subpage */
+(rdfop_route "/example" "rdf" (load "example.rdfhp"))
 
 
 (serve 3443 http_handler)

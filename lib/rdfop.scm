@@ -15,10 +15,13 @@ Copyright (C) 2024  Carl-Philip Hänsch
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+(import "rdfop-parser.scm")
+
 (define rdfop_routes (newsession)) /* the list of all routes */
 /* call this function to register a new template under the specified path */
-(define rdfop_route (lambda (path template) (begin
-	/* TODO: compile template */
+(define rdfop_route (lambda (path schema template) (begin
+	/* compile template */
+	(define formula (parse_rdfhp schema template))
 
 	(define handle_query (lambda (req res) (begin
 		/* check for password */
@@ -26,14 +29,10 @@ Copyright (C) 2024  Carl-Philip Hänsch
 		((res "status") 200)
 		(print "RDFOP query: " req)
 
-		/*
-		(define formula (parse_sparql schema query))
-		(define resultrow (res "jsonl"))
+		(define print (res "print"))
 		(define session (newsession))
 
 		(eval formula)
-		*/
-		((res "print") "TODO: render ----<br>" template)
 	)))
 	(rdfop_routes path handle_query) /* register to router */
 	(print "registered router: " path)
