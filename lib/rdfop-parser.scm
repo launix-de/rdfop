@@ -20,7 +20,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(parser (define select rdf_select) '("select" select))
 	(parser '((atom "PRINT" true) (define format (regex "[a-zA-Z0-9_]+")) (define value rdf_expression)) '("print" format value))
 )))
-(define rdfhp_program (parser (* rdfhp_statement)))
+(define rdfhp_program (parser '((define statements (* rdfhp_statement)) (atom "")) statements "^(?:/\\*.*?\\*/|--[^\r\n]*[\r\n]|--[^\r\n]*$|[\r\n\t ]+)+"))
 
 (define rdfhp_filters '("RAW" concat /* TODO: HTML, JSON, SQL */))
 
@@ -28,12 +28,14 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	/* TODO: parse RDFHP header with parameters */
 	(match (ttl_header template) '("prefixes" definitions "rest" body) (begin
 		(define compile (lambda (program context) (match program
-			(cons '("print" format value) rest) '('begin '('print '((coalesce (rdfhp_filters (toUpper format)) (error "print: unknown format filter: " format)) (rdf_replace_context value context))) (compile rest context))
+			(cons '("print" format value) rest) '('!begin '('print '((coalesce (rdfhp_filters (toUpper format)) (error "print: unknown format filter: " format)) (rdf_replace_context value context))) (compile rest context))
+			(cons '("select" query) rest) (rdf_queryplan schema query definitions context (lambda (cols context) (compile rest context)))
+			(cons unknown rest) (error "unknown rdfhp statement: " unknown)
 			'() nil
 		)))
 		/*(rdf_queryplan (schema query context)*/
 		(print "program=" (rdfhp_program body))
 		(print "compiled=" (compile (rdfhp_program body) '()))
-		(compile (rdfhp_program body) '())
+		'('begin '('set 'definitions (cons 'list definitions)) (compile (rdfhp_program body) '()))
 	) (error "could not parse template " template)))
 )))

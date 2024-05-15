@@ -8,7 +8,7 @@ RDFHP stands for RDF hypertext preprocessor and has the following syntax:
 
 ```
 PARAMETER ?page "page" // reads GET parameter "page" into ?page
-PREFIX lx <https://launix.de/rdf/#>
+@PREFIX lx: <https://launix.de/rdf/#> .
 SELECT ?title, ?content WHERE {?page lx:isa lx:page; lx:title ?title; lx:content ?content}
 
 ?><!doctype html><html><head>

@@ -1,3 +1,17 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 
-print raw "Hello World"
+print raw "<h1>Welcome</h1>"
+
+SELECT ?s, ?o WHERE {?s a ?o}
+
+print raw ""
+print raw ?s
+print raw " <b>is a</b> "
+print raw ?o
+print raw "<br>"
+
+--?><!doctype html><html><head>
+--<title><?rdf PRINT HTML ?title ?></title>
+--</head><body>
+--<?rdf PRINT RAW ?content ?>
+--</body></html>

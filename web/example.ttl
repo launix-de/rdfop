@@ -1,5 +1,7 @@
-@prefix lx: <https://launix.de/rdf#>.
+@prefix lx: <https://launix.de/rdf/#>.
 
-1 lx:isa main.
-main lx:template "Hello World".
+1
+	a lx:page ;
+	lx:title "Velkomen" ;
+	lx:content "Text" .
 
