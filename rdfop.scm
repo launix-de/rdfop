@@ -15,7 +15,8 @@ Copyright (C) 2024  Carl-Philip Hänsch
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-(define rdfop_routes (newsession))
+(define rdfop_routes (newsession)) /* the list of all routes */
+/* call this function to register a new template under the specified path */
 (define rdfop_route (lambda (path template) (begin
 	/* TODO: compile template */
 
@@ -24,22 +25,27 @@ Copyright (C) 2024  Carl-Philip Hänsch
 		((res "header") "Content-Type" "text/html")
 		((res "status") 200)
 		(print "RDFOP query: " req)
+
+		/*
 		(define formula (parse_sparql schema query))
 		(define resultrow (res "jsonl"))
 		(define session (newsession))
 
 		(eval formula)
+		*/
+		((res "print") "TODO: render ----<br>" template)
 	)))
 	(rdfop_routes path handle_query) /* register to router */
+	(print "registered router: " path)
 )))
 
 (define http_handler (begin
-	(set old_handler http_handler)
+	(set old_handler (coalesce http_handler handler_404))
 
 	/* simple router for all handlers */
 	(lambda (req res) (begin
 		/* hooked our additional paths to it */
 		(set handler (rdfop_routes (req "path")))
-		(if handler (handler req res) (old_handler req res))
+		(if (nil? handler) (old_handler req res) (handler req res))
 	))
 ))
