@@ -30,7 +30,6 @@ Copyright (C) 2024  Carl-Philip Hänsch
 		(print "RDFOP query: " req)
 
 		(define print (res "print"))
-		(define session (newsession))
 
 		(eval formula)
 	)))

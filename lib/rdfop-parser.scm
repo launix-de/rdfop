@@ -32,7 +32,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 			(cons '("param" '('get_var sym) value) rest) '('!begin '('set sym '('('req "query") (rdf_replace_context value context))) (compile rest (append context sym sym)))
 			(cons '("print" format value) rest) '('!begin '('print '((coalesce (rdfhp_filters (toUpper format)) (error "print: unknown format filter: " format)) (rdf_replace_context value context))) (compile rest context))
 			(cons '("select" query) rest) '('!begin '('set 'o '('once '('lambda '('f) '('f)))) (rdf_queryplan schema query definitions context (lambda (cols context) '('o '('lambda '() (compile rest context))))))
-			(cons '("loop" query body) rest) '('!begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
+			(cons '("loop" query body) rest) '('begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
 			(cons unknown rest) (error "unknown rdfhp statement: " unknown)
 			'() nil
 		)))
