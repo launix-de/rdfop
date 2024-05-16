@@ -31,16 +31,25 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 (load_ttl "rdf" (load "example.ttl")) /* read example ttl file */
 
-/* handcraftet main page */
-(rdfop_routes "/" (lambda (req res) (begin
+
+
+/* template scipt for subpage */
+(rdfop_route "/" "rdf" (load "index.rdfhp"))
+(rdfop_route "/index" "rdf" (load "index.rdfhp"))
+(rdfop_route "/view" "rdf" (load "view.rdfhp"))
+
+/* handcraftet about page */
+(rdfop_routes "/about" (lambda (req res) (begin
 	(print "request " req)
 	((res "header") "Content-Type" "text/html")
 	((res "status") 200)
-	((res "print") "<h1>Welcome</h1>Go to <a href='example'>Example page</a>")
+	((res "print") "<h1>About</h1>
+		       visit us on <a href='https://github.com/launix-de/rdfop'>github</a>
+		       <br>
+		       <a href='index'>back</a>
+	")
 )))
 
-/* template scipt for subpage */
-(rdfop_route "/example" "rdf" (load "example.rdfhp"))
 
 
 (serve 3443 http_handler)
