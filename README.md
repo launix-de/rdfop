@@ -41,3 +41,5 @@ Then run the server:
 ```
 ./memcp/memcp memcp/lib/rdf.scm lib/rdfop.scm web/init.scm # load with only rdf lib from memcp, rdfop and our web app
 ```
+
+Then open: http://localhost:3443

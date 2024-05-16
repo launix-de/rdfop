@@ -44,5 +44,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 
 (serve 3443 http_handler)
+(print "")
 (print "listening on http://localhost:3443")
+(print "")
 
