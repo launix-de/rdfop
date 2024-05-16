@@ -6,6 +6,14 @@ print raw "<h1>Detail of "
 print html ?s
 print raw "</h1>"
 
+-- as soon as I insert this, index.rdfhp breaks and this query does not find anything
+-- SELECT ?name WHERE { ?s a foaf:Person; foaf:name ?name }
+-- BEGIN
+-- 	print raw "<h2>Person</h2>"
+-- 	print raw "Name:<br>"
+-- 	print html ?name
+-- END
+
 print raw "<h2>Properties</h2>"
 print raw "<table border=1><tr><th>Property</th><th>Value</th></tr>"
 SELECT ?p, ?o WHERE {?s ?p ?o}
