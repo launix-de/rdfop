@@ -6,21 +6,32 @@ print raw "<h1>Detail of "
 print html ?s
 print raw "</h1>"
 
-print raw "<table><tr><th>Property</th><th>Value</th></tr>"
+print raw "<h2>Properties</h2>"
+print raw "<table border=1><tr><th>Property</th><th>Value</th></tr>"
 SELECT ?p, ?o WHERE {?s ?p ?o}
 BEGIN
 	print raw "<tr><td>"
 	print html ?p
 
 	print raw "</td><td>"
-	-- TODO: link if it is a object
-	print html ?o
+	-- link if it is a object
+	SELECT ?t2 WHERE { ?o a ?t2 }
+	BEGIN
+		print raw "<a href='view?id="
+		print html ?o
+		print raw "'>"
+		print html ?o
+		print raw "</a>"
+	ELSE
+		print html ?o
+	END
 	print raw "</td></tr>"
 END
 print raw "</table>"
 
 
-print raw "<table><tr><th>Peer-Subject</th><th>Property</th></tr>"
+print raw "<h2>Back Edges</h2>"
+print raw "<table border=1><tr><th>Peer-Subject</th><th>Property</th></tr>"
 SELECT ?s2, ?p WHERE {?s2 ?p ?s}
 BEGIN
 	print raw "<tr><td>"

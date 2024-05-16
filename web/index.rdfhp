@@ -2,7 +2,7 @@
 
 print raw "<h1>Overview over all stored objects</h1>"
 
-print raw "<table><tr><th>Object</th><th>Type</th></tr>"
+print raw "<table border=1><tr><th>Object</th><th>Type</th></tr>"
 SELECT ?s, ?o WHERE {?s a ?o}
 BEGIN
 	print raw "<tr><td><a href='view?id="

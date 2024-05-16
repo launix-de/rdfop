@@ -15,8 +15,10 @@ Copyright (C) 2024  Carl-Philip Hänsch
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+/* syntax definition */
 (define rdfhp_statement (parser (or
 	(parser '((atom "PARAMETER" true) (define param rdf_variable) (define value rdf_expression)) '("param" param value))
+	(parser '((define loop_header rdf_select) (atom "BEGIN" true) (define loop_body rdfhp_program) (atom "ELSE" true) (define loop_else rdfhp_program) (atom "END" true)) '("loop" loop_header loop_body loop_else))
 	(parser '((define loop_header rdf_select) (atom "BEGIN" true) (define loop_body rdfhp_program) (atom "END" true)) '("loop" loop_header loop_body))
 	(parser (define select rdf_select) '("select" select))
 	(parser '((atom "PRINT" true) (define format (regex "[a-zA-Z0-9_]+")) (define value rdf_expression)) '("print" format value))
@@ -25,6 +27,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 
 (define rdfhp_filters '("RAW" concat "URL" urlencode "HTML" htmlentities /* TODO: JSON, SQL */))
 
+/* compiler */
 (define parse_rdfhp (lambda (schema template) (begin
 	/* TODO: parse RDFHP header with parameters */
 	(match (ttl_header template) '("prefixes" definitions "rest" body) (begin
@@ -33,6 +36,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 			(cons '("print" format value) rest) '('!begin '('print '((coalesce (rdfhp_filters (toUpper format)) (error "print: unknown format filter: " format)) (rdf_replace_context value context))) (compile rest context))
 			(cons '("select" query) rest) '('!begin '('set 'o '('once '('lambda '('f) '('f)))) (rdf_queryplan schema query definitions context (lambda (cols context) '('o '('lambda '() (compile rest context))))))
 			(cons '("loop" query body) rest) '('begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
+			(cons '("loop" query body else) rest) '('begin '('set 'm '('mutex)) '('set 'o '('once '('lambda '('result) '('if 'result (compile else context))))) (rdf_queryplan schema query definitions context (lambda (cols context) '('!begin '('o false) '('m '('lambda '() (compile body context)))))) '('o true) (compile rest context))
 			(cons unknown rest) (error "unknown rdfhp statement: " unknown)
 			'() nil
 		)))
