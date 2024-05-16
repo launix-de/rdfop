@@ -6,7 +6,7 @@ print raw "<table><tr><th>Object</th><th>Type</th></tr>"
 SELECT ?s, ?o WHERE {?s a ?o}
 BEGIN
 	print raw "<tr><td><a href='view?id="
-	print html ?s
+	print url ?s
 	print raw "'>"
 	print html ?s
 	print raw "</a>"
