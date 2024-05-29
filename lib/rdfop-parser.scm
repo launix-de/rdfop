@@ -22,7 +22,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(parser '((define loop_header rdf_select) (atom "BEGIN" true) (define loop_body rdfhp_program) (atom "END" true)) '("loop" loop_header loop_body))
 	(parser (define select rdf_select) '("select" select))
 	(parser '((atom "PRINT" true) (define format (regex "[a-zA-Z0-9_]+")) (define value rdf_expression)) '("print" format value))
-	(parser '((atom "?>" true) (define value (regex "(?:[^<]+|<[^?])*")) (atom "<?rdf" false)) '("print" "RAW" value))
+	(parser '((atom "?>" true) (define value (regex "(?:[^<]+|<[^?])*")) (or (atom "<?rdf" false) $)) '("print" "RAW" value))
 )))
 (define rdfhp_program (parser '((define statements (* rdfhp_statement)) (atom "")) statements "^(?:/\\*.*?\\*/|--[^\r\n]*[\r\n]|--[^\r\n]*$|[\r\n\t ]+)+"))
 
