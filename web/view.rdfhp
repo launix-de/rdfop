@@ -24,22 +24,22 @@ parameter ?s "id"
 
 SELECT ?p, ?o WHERE {?s ?p ?o}
 BEGIN
-	print raw "<tr><td>"
+	?><tr><td><?rdf
 	print html ?p
+	?></td><td><?rdf
 
-	print raw "</td><td>"
 	-- link if it is a object
 	SELECT ?t2 WHERE { ?o a ?t2 }
 	BEGIN
-		print raw "<a href='view?id="
+		?><a href='view?id=<?rdf
 		print url ?o
-		print raw "'>"
+		?>'><?rdf
 		print html ?o
-		print raw "</a>"
+		?></a><?rdf
 	ELSE
 		print html ?o
 	END
-	print raw "</td></tr>"
+	?></td></tr><?rdf
 END
 ?></table>
 
