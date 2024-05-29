@@ -2,9 +2,13 @@
 
 parameter ?s "id"
 
-print raw "<h1>Detail of "
-print html ?s
-print raw "</h1>"
+?><!doctype html><html><head>
+<title>Overview</title>
+</head><body>
+
+<h1>Detail of <?rdf print html ?s ?></h1>
+
+<?rdf
 
 -- as soon as I insert this, index.rdfhp breaks and this query does not find anything
 -- SELECT ?name WHERE { ?s a foaf:Person; foaf:name ?name }
@@ -14,8 +18,10 @@ print raw "</h1>"
 -- 	print html ?name
 -- END
 
-print raw "<h2>Properties</h2>"
-print raw "<table border=1><tr><th>Property</th><th>Value</th></tr>"
+?><h2>Properties</h2>
+<table border=1><tr><th>Property</th><th>Value</th></tr>
+<?rdf
+
 SELECT ?p, ?o WHERE {?s ?p ?o}
 BEGIN
 	print raw "<tr><td>"
@@ -35,30 +41,21 @@ BEGIN
 	END
 	print raw "</td></tr>"
 END
-print raw "</table>"
+?></table>
 
 
-print raw "<h2>Back Edges</h2>"
-print raw "<table border=1><tr><th>Peer-Subject</th><th>Property</th></tr>"
+<h2>Back Edges</h2>
+<table border=1><tr><th>Peer-Subject</th><th>Property</th></tr>
+<?rdf
+
 SELECT ?s2, ?p WHERE {?s2 ?p ?s}
 BEGIN
-	print raw "<tr><td>"
-	print raw "<a href='view?id="
-	print url ?s2
-	print raw "'>"
-	print html ?s2
-	print raw "</a>"
+	?><tr><td><a href='view?id=<?rdf print url ?s2 ?>'><?rdf print html ?s2 ?></a></td>
 
-	print raw "</td><td>"
-	print html ?p
-	print raw "</td></tr>"
+	<td><?rdf print html ?p ?></td></tr><?rdf
 END
-print raw "</table>"
+?></table>
 
-print RAW "<br> <a href='index'>back to index</a>"
+<br> <a href='index'>back to index</a>
 
---?><!doctype html><html><head>
---<title><?rdf PRINT HTML ?title ?></title>
---</head><body>
---<?rdf PRINT RAW ?content ?>
---</body></html>
+</body></html><?rdf

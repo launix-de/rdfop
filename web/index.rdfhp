@@ -1,26 +1,21 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 
-print raw "<h1>Overview over all stored objects</h1>"
+?><!doctype html><html><head>
+<title>Overview</title>
+</head><body>
 
-print raw "<table border=1><tr><th>Object</th><th>Type</th></tr>"
+<h1>Overview over all stored objects</h1>
+
+<table border=1><tr><th>Object</th><th>Type</th></tr>
+
+<?rdf
 SELECT ?s, ?o WHERE {?s a ?o}
 BEGIN
-	print raw "<tr><td><a href='view?id="
-	print url ?s
-	print raw "'>"
-	print html ?s
-	print raw "</a>"
-
-	print raw "</td><td>"
-	print html ?o
-	print raw "</td></tr>"
+	?><tr><td><a href='view?id=<?rdf print url ?s ?>'><?rdf print html ?s ?></a></td>
+	<td><?rdf print html ?o ?></td></tr><?rdf
 END
-print raw "</table>"
+?></table>
 
-print RAW "<br> <a href='about'>about</a>"
+<br> <a href='about'>about</a>
 
---?><!doctype html><html><head>
---<title><?rdf PRINT HTML ?title ?></title>
---</head><body>
---<?rdf PRINT RAW ?content ?>
---</body></html>
+</body></html><?rdf
