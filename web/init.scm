@@ -34,9 +34,10 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 
 /* template scipt for subpage */
-(rdfop_route "/" "rdf" (load "index.rdfhp"))
-(rdfop_route "/index" "rdf" (load "index.rdfhp"))
-(rdfop_route "/view" "rdf" (load "view.rdfhp"))
+(watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content)))
+(watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content)))
+(watch "view.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content)))
+(watch "helloworld.rdfhp" (lambda (content) (rdfop_route "/hello" "rdf" content)))
 
 /* handcraftet about page */
 (rdfop_routes "/about" (lambda (req res) (begin
