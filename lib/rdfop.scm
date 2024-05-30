@@ -19,9 +19,9 @@ Copyright (C) 2024  Carl-Philip Hänsch
 
 (define rdfop_routes (newsession)) /* the list of all routes */
 /* call this function to register a new template under the specified path */
-(define rdfop_route (lambda (path schema template) (begin
+(define rdfop_route (lambda (path schema template watch) (begin
 	/* compile template */
-	(define formula (parse_rdfhp schema template))
+	(define formula (parse_rdfhp schema template watch))
 
 	(define handle_query (lambda (req res) (begin
 		/* check for password */

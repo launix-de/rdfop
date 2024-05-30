@@ -15,6 +15,8 @@ Copyright (C) 2024  Carl-Philip Hänsch
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+(set rdf_include_cache (newsession)) /* in this variable we store the compiled contents of all include files */
+
 /* syntax definition */
 (define rdfhp_statement (parser (or
 	(parser '((atom "PARAMETER" true) (define param rdf_variable) (define value rdf_expression)) '("param" param value))
@@ -23,13 +25,14 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(parser (define select rdf_select) '("select" select))
 	(parser '((atom "PRINT" true) (define format (regex "[a-zA-Z0-9_]+")) (define value rdf_expression)) '("print" format value))
 	(parser '((atom "?>" true) (define value (regex "(?:[^<]+|<[^?])*")) (or (atom "<?rdf" false) $)) '("print" "RAW" value))
+	(parser '((atom "INCLUDE" true) (define filename rdf_expression)) '("include" filename))
 )))
 (define rdfhp_program (parser '((define statements (* rdfhp_statement)) (atom "")) statements "^(?:/\\*.*?\\*/|--[^\r\n]*[\r\n]|--[^\r\n]*$|[\r\n\t ]+)+"))
 
 (define rdfhp_filters '("RAW" concat "URL" urlencode "HTML" htmlentities /* TODO: JSON, SQL */))
 
 /* compiler */
-(define parse_rdfhp (lambda (schema template) (begin
+(define parse_rdfhp (lambda (schema template watch) (begin
 	/* TODO: parse RDFHP header with parameters */
 	(match (ttl_header template) '("prefixes" definitions "rest" body) (begin
 		(define compile (lambda (program context) (match program
@@ -38,6 +41,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 			(cons '("select" query) rest) '('!begin '('set 'o '('once '('lambda '('f) '('f)))) (rdf_queryplan schema query definitions context (lambda (cols context) '('o '('lambda '() (compile rest context))))))
 			(cons '("loop" query body) rest) '('begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
 			(cons '("loop" query body else) rest) '('begin '('set 'm '('mutex)) '('set 'o '('once '('lambda '('result) '('if 'result (compile else context))))) (rdf_queryplan schema query definitions context (lambda (cols context) '('!begin '('o false) '('m '('lambda '() (compile body context)))))) '('o true) (compile rest context))
+			(cons '("include" filename) rest) (!begin (watch filename (lambda (content) (rdf_include_cache filename content))) '('begin '('print '(rdf_include_cache filename)) (compile rest context)))
 			(cons unknown rest) (error "unknown rdfhp statement: " unknown)
 			'() nil
 		)))
