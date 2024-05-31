@@ -29,7 +29,13 @@ Copyright (C) 2024  Carl-Philip Hänsch
 )))
 (define rdfhp_program (parser '((define statements (* rdfhp_statement)) (atom "")) statements "^(?:/\\*.*?\\*/|--[^\r\n]*[\r\n]|--[^\r\n]*$|[\r\n\t ]+)+"))
 
-(define rdfhp_filters '("RAW" concat "URL" urlencode "HTML" htmlentities /* TODO: JSON, SQL */))
+(define rdfhp_filters '(
+	"RAW" concat
+	"URL" urlencode
+	"HTML" htmlentities
+	"JSON" json_encode
+	"JSONO" json_encode_assoc
+	/* TODO: SQL */))
 
 /* compiler */
 (define parse_rdfhp (lambda (schema template watch) (begin
