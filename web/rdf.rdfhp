@@ -1,18 +1,21 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 
 ?><!doctype html><html><head>
-<title>Overview</title>
+<title>RDF execution</title>
 </head><body>
 
-<h1>Overview over all stored objects</h1>
+<h1>Query result</h1>
 
-<table border=1><tr><th>Object</th><th>Type</th></tr>
+<table border=1><tr><th>?s</th><th>?p</th><th>?o</th></tr>
 
 <?rdf
-SELECT ?s, ?o WHERE {?s a ?o}
+SELECT ?s, ?p, ?o WHERE {?s ?p ?o}
 BEGIN
-	?><tr><td><a href='view?id=<?rdf print url ?s ?>'><?rdf print html ?s ?></a></td>
-	<td><?rdf print html ?o ?></td></tr><?rdf
+	?><tr>
+		<td><?rdf print html ?s ?></td>
+		<td><?rdf print html ?p ?></td>
+		<td><?rdf print html ?o ?></td>
+	</tr><?rdf
 END
 ?></table>
 
@@ -24,6 +27,7 @@ Please enter RDF code:
 </form>
 
 
-<br> <a href='about'>about</a>
+<br> <a href='index'>back to main</a>
 
 </body></html>
+

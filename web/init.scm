@@ -37,7 +37,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content watch)))
 (watch "view.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content watch)))
-(watch "helloworld.rdfhp" (lambda (content) (rdfop_route "/hello" "rdf" content watch)))
+(watch "rdf.rdfhp" (lambda (content) (rdfop_route "/rdf" "rdf" content watch)))
 
 /* handcraftet about page */
 (rdfop_routes "/about" (lambda (req res) (begin
