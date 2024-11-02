@@ -31,7 +31,40 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 (load_ttl "rdf" (load "example.ttl")) /* read example ttl file */
 
+/* custom function for query execution */
+(rdf_functions "execute_rdf" (lambda (req res) (begin
+	(set rdf (((req "bodyParts")) "rdf"))
+	(set print (res "print"))
 
+	/* compile and execute rdf */
+	(define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "Parser error: <b>" (htmlentities e) "</b>"))))
+	/*(print "formula=" formula)*/
+	(set print_header (once (lambda (o) (begin
+		(print "<tr>")
+		(map_assoc o (lambda (k v) (print "<th>" (htmlentities k) "</th>")))
+		(print "</tr>")
+	))))
+	(define resultrow (lambda (o) (begin
+		(print_header o)
+		(print "<tr>")
+		(map_assoc o (lambda (k v) (print "<td>" (htmlentities v) "</td>")))
+		(print "</tr>")
+	)))
+
+	(if (not (nil? formula)) (begin
+		(print "<table border=1>")
+		(try (lambda () (eval formula)) (lambda (e) (print "<tr><th>Error:</th><td>" (htmlentities e) "</td></tr>")))
+		(print "</table>")
+	))
+	(print "
+		<h2>RDF console</h2>
+		Please enter RDF code:
+		<form method=\"POST\" encoding=\"multipart/form-data\" action=\"rdf\">
+		<textarea name=\"rdf\" style=\"width: 100%; height: 30vh;\">" (htmlentities rdf) "</textarea><br>
+		<button type=\"submit\">execute</button>
+		</form>")
+
+)))
 
 /* template scipt for subpage */
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))

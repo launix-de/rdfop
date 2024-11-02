@@ -6,25 +6,10 @@
 
 <h1>Query result</h1>
 
-<table border=1><tr><th>?s</th><th>?p</th><th>?o</th></tr>
-
 <?rdf
-SELECT ?s, ?p, ?o WHERE {?s ?p ?o}
-BEGIN
-	?><tr>
-		<td><?rdf print html ?s ?></td>
-		<td><?rdf print html ?p ?></td>
-		<td><?rdf print html ?o ?></td>
-	</tr><?rdf
-END
-?></table>
+CALL execute_rdf(REQ, RES)
 
-<h2>RDF console</h2>
-Please enter RDF code:
-<form method="POST" encoding="multipart/form-data" action="rdf">
-<textarea name="rdf" style="width: 100%; height: 30vh;">SELECT ?s ?p ?o WHERE {?s ?p ?o}</textarea><br>
-<button type="submit">execute</button>
-</form>
+?>
 
 
 <br> <a href='index'>back to main</a>
