@@ -22,7 +22,7 @@
 
   <h3 class="mt-4">RDF console</h3>
   <div class="card pad">
-    <form class="overlay-form" method="POST" action="rdf" onsubmit="return openOverlaySubmit(this)">
+    <form class="overlay-form" method="POST" action="rdf">
       <textarea class="input w-100 h-30vh" name="rdf">SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea>
       <div class="mt-2">
         <button class="btn primary" type="submit">Execute</button>

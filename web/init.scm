@@ -62,7 +62,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 	(print "<h3 class='mt-4'>RDF console</h3>")
 	(print "<div class='card pad'>")
-	(print "<form class='overlay-form' method='POST' action='rdf' onsubmit='return openOverlaySubmit(this)'>")
+	(print "<form class='overlay-form' method='POST' action='rdf'>")
 	(print "<textarea class='input w-100 h-30vh' name='rdf'>" (htmlentities rdf) "</textarea>")
 	(print "<div class='mt-2'><button class='btn primary' type='submit'>Execute</button></div>")
 	(print "</form>")
