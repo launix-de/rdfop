@@ -106,21 +106,11 @@
             if (top && top.modal === modal) { close(); document.removeEventListener('keydown', esc); }
           }
         });
-        window.__overlayStack.push({ backdrop, modal });
+        window.__overlayStack.push({ backdrop, modal, content });
         return { backdrop, modal, content, closeBtn };
       }
 
-      async function openOverlay(url){
-        const { content, closeBtn } = buildOverlaySkeleton();
-        try {
-          const resp = await fetch(url, { headers: { 'X-Requested-With': 'fetch' } });
-          const html = await resp.text();
-          content.innerHTML = html;
-        } catch (err) {
-          content.innerHTML = '<div style="color:#b91c1c">Failed to load content.</div>';
-        }
-        closeBtn.focus();
-      }
+      function openOverlay(url){ return overlayFetch(url, null, false); }
       window.openOverlay = openOverlay;
 
       function openOverlayHTML(html){
@@ -130,21 +120,41 @@
       }
       window.openOverlayHTML = openOverlayHTML;
 
-      // Helper to submit forms into a stacked overlay
-      window.openOverlaySubmit = async function(form){
-        const url = form.getAttribute('action') || location.href;
-        const method = (form.getAttribute('method')||'GET').toUpperCase();
-        const body = method === 'GET' ? undefined : new URLSearchParams(new FormData(form));
+      // Unified overlay request: body=null -> GET, body=FormData -> POST; replace toggles in-place update
+      async function overlayFetch(url, body, replace){
         const headers = { 'X-Requested-With': 'fetch', 'Accept': 'text/html' };
-        if (method !== 'GET') headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        const opts = body ? { method: 'POST', body, headers } : { headers };
+        let target;
+        if (replace && window.__overlayStack.length) target = window.__overlayStack[window.__overlayStack.length-1];
+        if (!target) target = buildOverlaySkeleton();
         try {
-          const resp = await fetch(url, { method, body, headers });
+          const resp = await fetch(url, opts);
           const html = await resp.text();
-          openOverlayHTML(html);
+          target.content.innerHTML = html;
         } catch (e) {
-          openOverlayHTML('<div style="color:#b91c1c">Request failed.</div>');
+          target.content.innerHTML = '<div style=\"color:#b91c1c\">Request failed.</div>';
         }
-        return false;
+        if (target.closeBtn) target.closeBtn.focus();
+      }
+      window.overlayFetch = overlayFetch;
+
+      function openOverlayReplace(url){ return overlayFetch(url, null, true); }
+      window.openOverlayReplace = openOverlayReplace;
+
+      // Helper to submit forms into overlays (stacked)
+      window.openOverlaySubmit = function(form){
+        const action = form.getAttribute('action') || location.href;
+        const params = new URLSearchParams(new FormData(form));
+        const url = action + (action.includes('?') ? '&' : '?') + params.toString();
+        return overlayFetch(url, null, false), false;
+      };
+
+      // Helper to submit forms replacing current overlay
+      window.openOverlaySubmitReplace = function(form){
+        const action = form.getAttribute('action') || location.href;
+        const params = new URLSearchParams(new FormData(form));
+        const url = action + (action.includes('?') ? '&' : '?') + params.toString();
+        return overlayFetch(url, null, true), false;
       };
 
       // Global delegation for overlay forms

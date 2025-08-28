@@ -33,17 +33,20 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 /* custom function for query execution */
 (rdf_functions "execute_rdf" (lambda (req res) (begin
+    (set q (req "query"))
     (set bodyParts (req "bodyParts"))
-    (set rdf (coalesce (if (nil? bodyParts) nil (bodyParts "rdf")) (((req "query")) "rdf")))
+    (set rdf (coalesce (if (nil? q) nil (q "rdf")) (if (nil? bodyParts) nil (bodyParts "rdf"))))
 	(set print (res "print"))
 
 	/* compile and execute rdf */
-	(define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "Parser error: <b>" (htmlentities e) "</b>"))))
+	(define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
 	/*(print "formula=" formula)*/
+	(set header_printed false)
 	(set print_header (once (lambda (o) (begin
-		(print "<tr>")
+		(set header_printed true)
+		(print "<thead><tr>")
 		(map_assoc o (lambda (k v) (print "<th>" (htmlentities k) "</th>")))
-		(print "</tr>")
+		(print "</tr></thead><tbody>")
 	))))
 	(define resultrow (lambda (o) (begin
 		(print_header o)
@@ -57,14 +60,18 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	(if (not (nil? formula)) (begin
 		(print "<div class='card'><table class='table'>")
 		(try (lambda () (eval formula)) (lambda (e) (print "<tr class='error'><th>Error:</th><td>" (htmlentities e) "</td></tr>")))
+		(if header_printed (print "</tbody>") (print "<tr><td class='empty'>No results.</td></tr>"))
 		(print "</table></div>")
 	))
 
 	(print "<h3 class='mt-4'>RDF console</h3>")
 	(print "<div class='card pad'>")
-	(print "<form class='overlay-form' method='POST' action='rdf'>")
+	(print "<form method='POST' action='rdf' onsubmit='return openOverlaySubmitReplace(this)'>")
 	(print "<textarea class='input w-100 h-30vh' name='rdf'>" (htmlentities rdf) "</textarea>")
-	(print "<div class='mt-2'><button class='btn primary' type='submit'>Execute</button></div>")
+	(print "<div class='mt-2'>")
+	(print "<button class='btn primary' type='button' onclick='return openOverlaySubmitReplace(this.form)'>Execute</button> ")
+	(print "<button class='btn' type='button' onclick='return openOverlaySubmit(this.form)'>Open in new overlay</button>")
+	(print "</div>")
 	(print "</form>")
 	(print "</div>")
 
