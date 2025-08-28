@@ -51,18 +51,12 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 		(print "</tr>")
 	)))
 
+
 	(if (not (nil? formula)) (begin
-		(print "<table border=1>")
-		(try (lambda () (eval formula)) (lambda (e) (print "<tr><th>Error:</th><td>" (htmlentities e) "</td></tr>")))
-		(print "</table>")
+		(print "<div class='card'><table class='table'>")
+		(try (lambda () (eval formula)) (lambda (e) (print "<tr class='error'><th>Error:</th><td>" (htmlentities e) "</td></tr>")))
+		(print "</table></div>")
 	))
-	(print "
-		<h2>RDF console</h2>
-		Please enter RDF code:
-		<form method=\"POST\" encoding=\"multipart/form-data\" action=\"rdf\">
-		<textarea name=\"rdf\" style=\"width: 100%; height: 30vh;\">" (htmlentities rdf) "</textarea><br>
-		<button type=\"submit\">execute</button>
-		</form>")
 
 )))
 

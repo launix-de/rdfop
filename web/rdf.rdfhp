@@ -1,18 +1,6 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 
-?><!doctype html><html><head>
-<title>RDF execution</title>
-</head><body>
-
-<h1>Query result</h1>
-
-<?rdf
-CALL execute_rdf(REQ, RES)
-
-?>
-
-
-<br> <a href='index'>back to main</a>
-
-</body></html>
-
+?><div class="rdf-result-snippet">
+  <h2>Query result</h2>
+  <?rdf CALL execute_rdf(REQ, RES) ?>
+</div>
