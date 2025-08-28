@@ -34,14 +34,12 @@ At first, you have to make and install rdfhp and memcp:
 ```
 git clone https://github.com/launix-de/rdfop
 cd rdfop
-
-git clone https://github.com/launix-de/memcp
-make -C memcp # install go if you haven't go installed on your computer
+make # this clones https://github.com/launix-de/memcp and compiles it
 ```
 
 Then run the server:
 ```
-./memcp/memcp memcp/lib/rdf.scm lib/rdfop.scm web/init.scm # load with only rdf lib from memcp, rdfop and our web app
+./run.sh
 ```
 
 Then open: http://localhost:3443
