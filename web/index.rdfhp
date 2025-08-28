@@ -17,6 +17,11 @@
   .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .brand { position: fixed; left: 24px; top: 20px; color: var(--muted); font-weight: 600; letter-spacing: .02em; z-index: 1000; }
   .gear .icon { font-size: 18px; display: inline-block; }
+  /* Overlay styles */
+  .overlay-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 2000; }
+  .overlay-window { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel); border-radius: 12px; box-shadow: 0 16px 48px rgba(2,6,23,.3), 0 6px 16px rgba(2,6,23,.18); width: min(92vw, 980px); max-height: 86vh; overflow: auto; z-index: 2001; }
+  .overlay-content { padding: 18px 20px; }
+  .overlay-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; font-size: 20px; cursor: pointer; color: #334155; }
 </style>
 </head><body>
   <div class="brand">RDFOP</div>
@@ -42,6 +47,55 @@
       btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
       document.addEventListener('click', (e) => { if(menu.classList.contains('open')) menu.classList.remove('open'); });
       document.addEventListener('keydown', (e) => { if(e.key === 'Escape') menu.classList.remove('open'); });
+
+      // Overlay helper
+      function removeExistingOverlay(){
+        document.querySelectorAll('.overlay-backdrop, .overlay-window').forEach(el => el.remove());
+      }
+      async function openOverlay(url){
+        removeExistingOverlay();
+        const backdrop = document.createElement('div');
+        backdrop.className = 'overlay-backdrop';
+        const modal = document.createElement('div');
+        modal.className = 'overlay-window';
+        modal.setAttribute('role','dialog');
+        modal.setAttribute('aria-modal','true');
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'overlay-close';
+        closeBtn.setAttribute('aria-label','Close');
+        closeBtn.textContent = '✕';
+        const content = document.createElement('div');
+        content.className = 'overlay-content';
+        modal.appendChild(closeBtn);
+        modal.appendChild(content);
+        document.body.appendChild(backdrop);
+        document.body.appendChild(modal);
+
+        const close = () => { backdrop.remove(); modal.remove(); };
+        backdrop.addEventListener('click', close);
+        closeBtn.addEventListener('click', close);
+        document.addEventListener('keydown', function esc(e){ if(e.key==='Escape'){ close(); document.removeEventListener('keydown', esc); } });
+
+        try {
+          const resp = await fetch(url, { headers: { 'X-Requested-With': 'fetch' } });
+          const html = await resp.text();
+          content.innerHTML = html;
+        } catch (err) {
+          content.innerHTML = '<div style="color:#b91c1c">Failed to load content.</div>';
+        }
+        closeBtn.focus();
+      }
+      window.openOverlay = openOverlay;
+
+      // Intercept menu clicks
+      Array.from(menu.querySelectorAll('a[href]')).forEach(a => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          const href = a.getAttribute('href');
+          openOverlay(href);
+          menu.classList.remove('open');
+        });
+      });
     })();
   </script>
 </body></html>

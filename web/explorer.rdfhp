@@ -1,10 +1,7 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 
-?><!doctype html><html><head>
-<title>Knowledge Base Explorer</title>
-</head><body>
-
-<h1>Overview over all stored objects</h1>
+?><div class="explorer-snippet">
+<h2>Overview over all stored objects</h2>
 
 <table border=1><tr><th>Object</th><th>Type</th></tr>
 
@@ -16,15 +13,9 @@ BEGIN
 END
 ?></table>
 
-<h2>RDF console</h2>
-Please enter RDF code:
+<h3>RDF console</h3>
 <form method="POST" encoding="multipart/form-data" action="rdf">
 <textarea name="rdf" style="width: 100%; height: 30vh;">SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea><br>
 <button type="submit">execute</button>
 </form>
-
-
-<br> <a href='about'>about</a>
-
-</body></html>
-
+</div>

@@ -1,37 +1,35 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure
 - `lib/`: Core Scheme modules (`rdfop.scm`, `rdfop-parser.scm`, `main.scm`).
-- `web/`: RDFHP templates and app init (`index.rdfhp`, `view.rdfhp`, `rdf.rdfhp`, `init.scm`). Routes are registered in `init.scm`.
-- `data/` (git‑ignored): Runtime database, schemas, logs, and settings.
+- `web/`: RDFHP views/snippets and init (`index.rdfhp`, `explorer.rdfhp`, `settings.rdfhp`, `view.rdfhp`, `rdf.rdfhp`, `init.scm`).
+- `data/` (git‑ignored): Runtime DB, schemas, logs, settings.
 - `memcp/`: Built dependency (cloned by `make`).
-- Root: `Makefile`, `run.sh`, demo `example.ttl`, optional `index.html` (frontend prototype).
 
-## Build, Test, and Development Commands
-- `make`: Clones and builds `memcp` (Go), the runtime for this repo.
-- `./run.sh`: Starts the server via `memcp` with `lib/main.scm` and `web/init.scm`.
-- Open `http://localhost:3443`: Browse routes (`/`, `/index`, `/view`, `/rdf`, `/about`).
-- From server console, import data: `(load_ttl "rdf" (stream "example.ttl"))`.
+## SPA & Snippets
+- Architecture: Single Page Application with heavy AJAX. Only `index.rdfhp` is a full HTML page.
+- Snippets: All other routes render fragments (no `<html>`/`<body>`). Use a single root `<div>`.
+- Overlay helper: `openOverlay(url)` creates a modal with a gray backdrop and loads snippet HTML via `fetch(url)` into the modal content. Close via [x], backdrop click, or Escape.
+- Menu actions should call `openOverlay('/explorer')`, `openOverlay('/settings')` instead of full page loads.
 
-## Coding Style & Naming Conventions
-- Language: Scheme‑like `.scm` and `.rdfhp` templates; block comments use `/* ... */`.
-- Indentation: Tabs or 2 spaces; keep it consistent within a file; wrap at ~100 chars.
-- Filenames: Lowercase; hyphens allowed for modules (e.g., `rdfop-parser.scm`); templates mirror routes (e.g., `web/view.rdfhp`).
-- Templates: Prefer `PRINT HTML` for user content; only use `PRINT RAW` when safe.
+## Build & Run
+- `make`: Clone/build `memcp` (Go runtime).
+- `./run.sh`: Start server (`http://localhost:3443`).
+- Console import: `(load_ttl "rdf" (stream "example.ttl"))`.
 
-## Testing Guidelines
-- No formal test harness yet. Use manual checks:
-  - Start server and exercise routes.
-  - Validate SPARQL/RDFHP via `/rdf` console.
-  - Load `.ttl` fixtures with `load_ttl` and verify query results.
-- Add small, focused modules; keep side effects in `web/init.scm`.
+## Coding Style
+- Languages: Scheme `.scm`, RDFHP `.rdfhp` (templates). Block comments: `/* ... */`.
+- Indentation: Tabs or 2 spaces; keep consistent; wrap ~100 chars.
+- Filenames: lowercase with hyphens; snippets mirror route names (e.g., `web/explorer.rdfhp`).
+- Safety: Use `PRINT HTML` for user content; avoid `PRINT RAW` unless sanitized.
 
-## Commit & Pull Request Guidelines
-- Commits: Short, imperative subject lines (e.g., `add RDF console`, `fix parser error`).
-- PRs: Include purpose, key changes, reproduction steps, and screenshots of pages or console output where relevant. Link issues.
-- Keep diffs focused; update `README.md` when behavior or commands change.
+## Testing
+- Manual checks: start server, open `/`, trigger overlays, load `/explorer` and `/settings` as overlays, verify close interactions.
+- Validate SPARQL/RDF via `/rdf` console; load sample TTL and check results.
 
-## Security & Configuration Tips
-- `data/` and `memcp/` are git‑ignored; do not commit runtime data.
-- Default port is `3443` (see `web/init.scm`). Avoid exposing publicly without hardening.
-- CSP in `index.html` is dev‑oriented; adjust when building a real frontend.
+## Commits & PRs
+- Commits: Imperative, concise (e.g., `convert explorer to snippet`, `add overlay helper`).
+- PRs: Include purpose, screenshots/gifs of overlays, and repro steps. Update `README.md` when commands/flows change.
+
+## Security
+- Keep `data/` and `memcp/` out of VCS. Default port `3443`; do not expose publicly without review.
