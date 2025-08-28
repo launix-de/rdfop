@@ -1,0 +1,20 @@
+@PREFIX lx: <https://launix.de/rdf/#> .
+
+?><!doctype html><html><head>
+<meta charset="utf-8">
+<title>Settings</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; margin: 2rem; }
+  .container { max-width: 800px; margin: 0 auto; }
+  .muted { color: #6b7280; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head><body>
+  <div class="container">
+    <h1>Settings</h1>
+    <p class="muted">Project configuration will appear here. For now, this page is a placeholder.</p>
+    <p><a href="/">← Back to home</a></p>
+  </div>
+</body></html>
+

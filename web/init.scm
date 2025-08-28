@@ -69,6 +69,8 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 /* template scipt for subpage */
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content watch)))
+(watch "explorer.rdfhp" (lambda (content) (rdfop_route "/explorer" "rdf" content watch)))
+(watch "settings.rdfhp" (lambda (content) (rdfop_route "/settings" "rdf" content watch)))
 (watch "view.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content watch)))
 (watch "rdf.rdfhp" (lambda (content) (rdfop_route "/rdf" "rdf" content watch)))
 
@@ -90,4 +92,3 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (print "")
 (print "listening on http://localhost:3443")
 (print "")
-
