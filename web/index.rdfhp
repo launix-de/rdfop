@@ -134,9 +134,11 @@
       window.openOverlaySubmit = async function(form){
         const url = form.getAttribute('action') || location.href;
         const method = (form.getAttribute('method')||'GET').toUpperCase();
-        const body = method === 'GET' ? undefined : new FormData(form);
+        const body = method === 'GET' ? undefined : new URLSearchParams(new FormData(form));
+        const headers = { 'X-Requested-With': 'fetch', 'Accept': 'text/html' };
+        if (method !== 'GET') headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
         try {
-          const resp = await fetch(url, { method, body, headers: { 'X-Requested-With': 'fetch' } });
+          const resp = await fetch(url, { method, body, headers });
           const html = await resp.text();
           openOverlayHTML(html);
         } catch (e) {
@@ -144,6 +146,15 @@
         }
         return false;
       };
+
+      // Global delegation for overlay forms
+      document.addEventListener('submit', function(e){
+        const form = e.target;
+        if (form && form.classList && form.classList.contains('overlay-form')) {
+          e.preventDefault();
+          window.openOverlaySubmit(form);
+        }
+      }, true);
 
       // Helper for links to open stacked overlays
       window.openOverlayLink = function(a){

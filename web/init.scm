@@ -33,7 +33,8 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 /* custom function for query execution */
 (rdf_functions "execute_rdf" (lambda (req res) (begin
-	(set rdf (((req "bodyParts")) "rdf"))
+    (set bodyParts (req "bodyParts"))
+    (set rdf (coalesce (if (nil? bodyParts) nil (bodyParts "rdf")) (((req "query")) "rdf")))
 	(set print (res "print"))
 
 	/* compile and execute rdf */
@@ -52,11 +53,20 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	)))
 
 
+
 	(if (not (nil? formula)) (begin
 		(print "<div class='card'><table class='table'>")
 		(try (lambda () (eval formula)) (lambda (e) (print "<tr class='error'><th>Error:</th><td>" (htmlentities e) "</td></tr>")))
 		(print "</table></div>")
 	))
+
+	(print "<h3 class='mt-4'>RDF console</h3>")
+	(print "<div class='card pad'>")
+	(print "<form class='overlay-form' method='POST' action='rdf' onsubmit='return openOverlaySubmit(this)'>")
+	(print "<textarea class='input w-100 h-30vh' name='rdf'>" (htmlentities rdf) "</textarea>")
+	(print "<div class='mt-2'><button class='btn primary' type='submit'>Execute</button></div>")
+	(print "</form>")
+	(print "</div>")
 
 )))
 
