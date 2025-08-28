@@ -1,6 +1,6 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 
-?><div class="settings-snippet" style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; padding: 1rem 1.25rem; max-width: 800px;">
+?><div class="settings-snippet container max-800 pad">
   <h2>Settings</h2>
-  <p style="color:#6b7280">Project configuration will appear here. For now, this page is a placeholder.</p>
+  <p class="muted">Project configuration will appear here. For now, this page is a placeholder.</p>
 </div>

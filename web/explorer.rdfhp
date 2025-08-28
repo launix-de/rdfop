@@ -20,11 +20,11 @@
     </table>
   </div>
 
-  <h3 style="margin-top:1rem">RDF console</h3>
-  <div class="card" style="padding:12px 12px 14px;">
+  <h3 class="mt-4">RDF console</h3>
+  <div class="card pad">
     <form method="POST" encoding="multipart/form-data" action="rdf" onsubmit="return openOverlaySubmit(this)">
-      <textarea class="input" name="rdf" style="width:100%; height:30vh;">SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea>
-      <div style="margin-top:8px">
+      <textarea class="input w-100 h-30vh" name="rdf">SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea>
+      <div class="mt-2">
         <button class="btn primary" type="submit">Execute</button>
       </div>
     </form>
