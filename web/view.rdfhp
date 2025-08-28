@@ -2,60 +2,49 @@
 
 parameter ?s "id"
 
-?><!doctype html><html><head>
-<title>Overview</title>
-</head><body>
+?><div class="view-snippet">
+  <h2>Detail of <?rdf print html ?s ?></h2>
 
-<h1>Detail of <?rdf print html ?s ?></h1>
+  <h3 class="mt-4">Properties</h3>
+  <div class="card">
+    <table class="table">
+      <tr><th>Property</th><th>Value</th></tr>
+      <?rdf
+      SELECT ?p, ?o WHERE {?s ?p ?o}
+      BEGIN
+        ?><tr>
+          <td><?rdf print html ?p ?></td>
+          <td><?rdf
+            SELECT ?t2 WHERE { ?o a ?t2 }
+            BEGIN
+              ?><a href='view?id=<?rdf print url ?o ?>' onclick="return openOverlayLink(this)"><?rdf print html ?o ?></a><?rdf
+            ELSE
+              print html ?o
+            END
+          ?></td>
+        </tr><?rdf
+      ELSE
+        ?><tr><td colspan="2" class="empty">No properties found.</td></tr><?rdf
+      END
+      ?>
+    </table>
+  </div>
 
-<?rdf
-
--- as soon as I insert this, index.rdfhp breaks and this query does not find anything
--- SELECT ?name WHERE { ?s a foaf:Person; foaf:name ?name }
--- BEGIN
--- 	print raw "<h2>Person</h2>"
--- 	print raw "Name:<br>"
--- 	print html ?name
--- END
-
-?><h2>Properties</h2>
-<table border=1><tr><th>Property</th><th>Value</th></tr>
-<?rdf
-
-SELECT ?p, ?o WHERE {?s ?p ?o}
-BEGIN
-	?><tr><td><?rdf
-	print html ?p
-	?></td><td><?rdf
-
-	-- link if it is a object
-	SELECT ?t2 WHERE { ?o a ?t2 }
-	BEGIN
-		?><a href='view?id=<?rdf
-		print url ?o
-		?>'><?rdf
-		print html ?o
-		?></a><?rdf
-	ELSE
-		print html ?o
-	END
-	?></td></tr><?rdf
-END
-?></table>
-
-
-<h2>Back Edges</h2>
-<table border=1><tr><th>Peer-Subject</th><th>Property</th></tr>
-<?rdf
-
-SELECT ?s2, ?p WHERE {?s2 ?p ?s}
-BEGIN
-	?><tr><td><a href='view?id=<?rdf print url ?s2 ?>'><?rdf print html ?s2 ?></a></td>
-
-	<td><?rdf print html ?p ?></td></tr><?rdf
-END
-?></table>
-
-<br> <a href='index'>back to index</a>
-
-</body></html>
+  <h3 class="mt-4">Back Edges</h3>
+  <div class="card">
+    <table class="table">
+      <tr><th>Peer-Subject</th><th>Property</th></tr>
+      <?rdf
+      SELECT ?s2, ?p WHERE {?s2 ?p ?s}
+      BEGIN
+        ?><tr>
+          <td><a href='view?id=<?rdf print url ?s2 ?>' onclick="return openOverlayLink(this)"><?rdf print html ?s2 ?></a></td>
+          <td><?rdf print html ?p ?></td>
+        </tr><?rdf
+      ELSE
+        ?><tr><td colspan="2" class="empty">No back edges.</td></tr><?rdf
+      END
+      ?>
+    </table>
+  </div>
+</div>

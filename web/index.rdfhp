@@ -145,6 +145,13 @@
         return false;
       };
 
+      // Helper for links to open stacked overlays
+      window.openOverlayLink = function(a){
+        const href = (a && a.getAttribute) ? a.getAttribute('href') : a;
+        if (href) openOverlay(href);
+        return false;
+      };
+
       // Intercept menu clicks
       Array.from(menu.querySelectorAll('a[href]')).forEach(a => {
         a.addEventListener('click', (e) => {

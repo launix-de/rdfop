@@ -10,7 +10,7 @@
       SELECT ?s, ?o WHERE {?s a ?o}
       BEGIN
         ?><tr>
-          <td><a href='view?id=<?rdf print url ?s ?>'><?rdf print html ?s ?></a></td>
+          <td><a href='view?id=<?rdf print url ?s ?>' onclick="return openOverlayLink(this)"><?rdf print html ?s ?></a></td>
           <td><?rdf print html ?o ?></td>
         </tr><?rdf
       ELSE
