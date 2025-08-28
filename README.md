@@ -62,6 +62,18 @@ with the following syntax rules:
 - if there is not `BEGIN...END` after a `SELECT`, only one result will be fetched and the selected variables will be inserted into the current scope
 - `PRINT FORMAT ?variable` will print out the content of the variable. `FORMAT` is one of `RAW`, `HTML`, `JSON`, `SQL` and will especially escape strings to be invulnerable to XSS or SQL injections
 
+## What You Can Build
+
+RDFOP is designed for highly interactive, data-driven apps. With its RDF-first data model, SPARQL queries, and snippet-based SPA UI (AJAX overlays), you can create:
+
+- CRMs: Contacts, companies, pipelines, custom fields, and reports.
+- TODO list managers: Tasks, tags, filters, and Kanban views.
+- UML chart designers: Diagrams persisted as triples; queryable models.
+- Workflow automation tools: Rules, triggers, actions; visual editors.
+- Brainstorming canvases: Notes, groups, relations; collaborative sessions.
+- Collaborative image editors: Annotations and layers stored in RDF.
+- Browser games: Game state and levels expressed as data, rendered via snippets.
+
 ## Build Instructions
 
 At first, you have to make and install rdfhp and memcp:

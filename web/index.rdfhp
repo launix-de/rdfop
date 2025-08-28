@@ -49,6 +49,7 @@
   <nav id="menu" class="menu" role="menu">
     <a role="menuitem" href="/explorer">Knowledge base explorer</a>
     <a role="menuitem" href="/settings">Settings</a>
+    <a role="menuitem" href="/ttl-import">TTL import</a>
   </nav>
   <div class="canvas">
     <div class="board" role="region" aria-label="Canvas"></div>
@@ -170,6 +171,19 @@
       window.openOverlayLink = function(a){
         const href = (a && a.getAttribute) ? a.getAttribute('href') : a;
         if (href) openOverlay(href);
+        return false;
+      };
+
+      // Read a file into a textarea in the same form
+      window.readFileToTextarea = function(input, selector){
+        try {
+          const f = input && input.files && input.files[0];
+          if (!f) return false;
+          const form = input.closest('form');
+          const ta = form && form.querySelector(selector || 'textarea');
+          if (!ta) return false;
+          f.text().then(txt => { ta.value = txt; });
+        } catch(e) {}
         return false;
       };
 

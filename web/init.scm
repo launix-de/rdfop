@@ -41,9 +41,9 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	/* compile and execute rdf */
 	(define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
 	/*(print "formula=" formula)*/
-	(set header_printed false)
+	(set state (newsession))
 	(set print_header (once (lambda (o) (begin
-		(set header_printed true)
+		(state "printed" true)
 		(print "<thead><tr>")
 		(map_assoc o (lambda (k v) (print "<th>" (htmlentities k) "</th>")))
 		(print "</tr></thead><tbody>")
@@ -60,7 +60,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	(if (not (nil? formula)) (begin
 		(print "<div class='card'><table class='table'>")
 		(try (lambda () (eval formula)) (lambda (e) (print "<tr class='error'><th>Error:</th><td>" (htmlentities e) "</td></tr>")))
-		(if header_printed (print "</tbody>") (print "<tr><td class='empty'>No results.</td></tr>"))
+		(if (state "printed") (print "</tbody>") (print "<tr><td class='empty'>No results.</td></tr>"))
 		(print "</table></div>")
 	))
 
@@ -77,11 +77,34 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 )))
 
+/* custom function for TTL import */
+(rdf_functions "import_ttl" (lambda (req res) (begin
+    (set print (res "print"))
+    (set q (req "query"))
+    (set bodyParts (req "bodyParts"))
+    (set ttl (coalesce (if (nil? q) nil (q "ttl")) (if (nil? bodyParts) nil (bodyParts "ttl"))))
+    (if (or (nil? ttl) (equal? ttl ""))
+        (print "")
+        (try
+            (lambda ()
+                (begin
+                    (load_ttl "rdf" ttl)
+                    (print "<div class='card pad' style='border-left:4px solid #059669'>Imported TTL successfully.</div>")
+                )
+            )
+            (lambda (e)
+                (print "<div class='card pad' style='border-left:4px solid #b91c1c'><div class='error'>Import error: " (htmlentities e) "</div></div>")
+            )
+        )
+    )
+)))
+
 /* template scipt for subpage */
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content watch)))
 (watch "explorer.rdfhp" (lambda (content) (rdfop_route "/explorer" "rdf" content watch)))
 (watch "settings.rdfhp" (lambda (content) (rdfop_route "/settings" "rdf" content watch)))
+(watch "ttl-import.rdfhp" (lambda (content) (rdfop_route "/ttl-import" "rdf" content watch)))
 (watch "view.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content watch)))
 (watch "rdf.rdfhp" (lambda (content) (rdfop_route "/rdf" "rdf" content watch)))
 

@@ -33,3 +33,12 @@
 
 ## Security
 - Keep `data/` and `memcp/` out of VCS. Default port `3443`; do not expose publicly without review.
+
+## Example Apps
+- CRMs: Entities, relations, and views defined entirely in RDF.
+- TODO managers: Lists, filters, and workflows with snippet overlays.
+- UML designers: Graph-like editors backed by RDF triples and SPARQL.
+- Workflow automation: Rules and actions modeled as triples; visual builders.
+- Brainstorm canvases: Sticky-notes and clusters with real-time overlays.
+- Collaborative image editors: Layers and annotations persisted as RDF.
+- Browser games: Data-driven state and UI rendered via snippets/AJAX.

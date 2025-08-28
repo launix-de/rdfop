@@ -1,0 +1,19 @@
+@PREFIX lx: <https://launix.de/rdf/#> .
+
+?><div class="ttl-import-snippet container max-800 pad">
+  <h2>TTL import</h2>
+  <p class="muted">Paste Turtle data below or choose a .ttl file to load its content into the field.</p>
+
+  <?rdf CALL import_ttl(REQ, RES) ?>
+
+  <div class="card pad">
+    <form method="GET" action="ttl-import" onsubmit="return openOverlaySubmitReplace(this)">
+      <textarea class="input w-100 h-30vh" name="ttl" placeholder="@prefix ex: &lt;http://example.com#&gt; .
+ex:foo a ex:Thing ."></textarea>
+      <div class="mt-2">
+        <input type="file" id="ttl-file" accept=".ttl,text/turtle,text/plain" onchange="return readFileToTextarea(this, 'textarea[name=ttl]')">
+        <button class="btn primary" type="submit">Import</button>
+      </div>
+    </form>
+  </div>
+</div>
