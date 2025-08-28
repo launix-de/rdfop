@@ -1,0 +1,4 @@
+peter a Person;
+ forename "Peter";
+ surname "Griffindor".
+

@@ -27,7 +27,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 /* TODO: move this to rdfop.scm, make it parameterizable (rdfop_serve schema folder port) */
 
 (createdatabase "rdf" true)
-(createtable "rdf" "rdf" '('("column" "s" "text" '() "") '("column" "p" "text" '() "") '("column" "o" "text" '() "") '("unique" "u" '("s" "p" "o"))) '() true)
+(createtable "rdf" "rdf" '('("column" "s" "text" '() '()) '("column" "p" "text" '() '()) '("column" "o" "text" '() '()) '("unique" "u" '("s" "p" "o"))) '() true)
 
 (load_ttl "rdf" (load "example.ttl")) /* read example ttl file */
 

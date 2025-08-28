@@ -1,9 +1,43 @@
-# rdfop - Resource Description Format Oriented Programming
+# RDFOP (aka FOP II)
 
-RDFOP is a template renderer for various RDF based formats. In a rule manager, template rules can be put over RDF items.
+RDFOP is a feature oriented programming framework based on RDF (resource description format). It is a *universal low code tool* which means you have a WYSIWIG editor and you can edit every aspect of the software. A software is purely described by data in RDF format.
+
+## Knowledge Bases and Triple Stores
+
+To store data of any kind, a so-called _knowledge base_ is used.
+The most common format for knowledge bases is the so-called _triple store_ AKA RDF (Resource Description Format).
+RDF organizes all data in so-called triplets (subject, predicate, object). A common format to express RDF data is .ttl.
+Here's an example `.ttl` file:
+```
+peter a Person;
+ forename "Peter";
+ surname "Griffindor".
+```
+which is a short form of:
+```
+peter a Person.
+peter forename "Peter".
+peter surname "Griffindor".
+```
+
+Now you can query RDF data using SPARQL:
+```
+SELECT ?forename, ?surname
+WHERE {
+	?person a Person;
+	forename ?forename;
+	surname ?surname.
+}
+```
+which will result in:
+```
+{ "forename": "Peter", "surname": "Griffindor" }
+```
 
 ## The .rdfhp format
 
+Now if you can query arbitrary knowledge from the knowledge base, what to do next?
+We have to somehow style and display the retrieved data. This is what RDFHP is for.
 RDFHP stands for RDF hypertext preprocessor and has the following syntax:
 
 ```
@@ -43,3 +77,8 @@ Then run the server:
 ```
 
 Then open: http://localhost:3443
+
+From the server console, you can import `.ttl` files via:
+```
+(load_ttl "rdf" (stream "example.ttl"))
+```
