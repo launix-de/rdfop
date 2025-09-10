@@ -42,6 +42,7 @@ Key ideas:
      - `?id` — the RDF subject being edited.
      - `?depth` — recursion depth for nested editors (to cap circular nesting).
    - Editor components may emit RDF updates (triples) or patch transactions.
+   - you can recursively call COMPONENT(?editor, ?params...) to insert another template into the editor
 
 4. **Code Generator**
    - Generator rules are RDF resources that contain:
