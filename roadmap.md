@@ -1,18 +1,23 @@
-# Low-Code Editor & Code Generator — Roadmap and Instructions
-**Based on RDFOP / RDFHP wording and template syntax.**  
-Triple store: **memcp** (used opaquely by RDFOP/RDFHP).  
+# Low-Code Editor & Code Generator — Final Roadmap
+
+This roadmap describes the complete architecture, concepts, design decisions, and implementation details of a model-driven low-code editor and code generator based on RDFOP, RDFHP templates, and memcp triple store.
 
 ---
 
-## Overview
+## General Concept
 
-This project implements a low-code **model-driven development** platform using the RDF-first approach of **Resource Description Format Oriented Programming (RDFOP)**. Models, editor UI descriptions, generator rules and templates are represented as RDF (Turtle `.ttl`) and processed with RDFHP-style templates and SPARQL queries.
+The system is a **model-driven development environment** where arbitrary models (e.g. UML, state machines, workflow diagrams) can be defined, edited, and transformed into executable code in various programming languages.  
+It is based on three layers:
+
+1. **Schema Layer** — Describes entities, attributes, constraints, editor components, and generator rules in RDF (Turtle).  
+2. **Editor Layer** — Provides human-editable UI components for creating and modifying model instances. UI components are RDFHP templates (read-only scaffolds) combined with Vue.js bindings to RDFJSON data.  
+3. **Code Generator Layer** — Uses recursive template expansion (`COMPILE(language, node, context)`) to transform models into target languages.
 
 Key ideas:
 - Models are arbitrary RDF graphs (one graph per module).
 - The platform ships a *single hard-coded* TTL schema describing the editor components, code generator entry points, and minimal entity type / attribute constraints. Everything else is queryable and extensible by adding new RDF schema definitions and editor definitions.
 - Code generation is driven by `rdfop:GeneratorRule` resources: each rule binds a SPARQL query to a template (RDFHP-style). Templates can emit any target language (JS, SQL, Python, C++, PHP...) and can call other rules recursively.
-- Triple store: **memcp**. In practice RDFOP/RDFHP hides the memcp usage; your templates and SPARQL run against the RDFOP runtime.
+- Data is stored in triple stores in **memcp**, exposed through **RDFJSON** and **RDFHP**. The system separates **code definitions** from **data instances** by database contexts.  
 
 ---
 
@@ -27,8 +32,7 @@ Key ideas:
      - Which entity types exist (`rdfop:EntityType`),
      - Attribute definitions (`rdfop:Attribute`), their types, and cardinalities (1:0..1, 1:1, 1:n),
      - Available editor components (`rdfop:EditorComponent`), and which attribute types they support,
-     - Code generators (`rdfop:CodeGenerator`) and available target languages,
-     - Generator rules (`rdfop:GeneratorRule`) linking SPARQL -> Template -> Output path metadata.
+     - Code generators (`rdfop:CodeGenerator`) for each available target language producing the code via RDFHP
    - Everything else (models, UI layouts, specialized constraints) is loose and extensible via RDF.
 
 3. **Editor UI**
@@ -36,148 +40,193 @@ Key ideas:
    - Editor components are described in RDF and use a two-way-binding HTML template syntax using RDF path references (SPARQL path-like bindings).
    - Components receive context variables such as:
      - `?id` — the RDF subject being edited.
-     - `?schema` — the schema graph/node for current type.
      - `?depth` — recursion depth for nested editors (to cap circular nesting).
-     - `?path` — the RDF path within the current model.
    - Editor components may emit RDF updates (triples) or patch transactions.
 
 4. **Code Generator**
    - Generator rules are RDF resources that contain:
-     - A SPARQL query (extracts model fragments)
-     - An RDFHP-style template that renders code text
-     - Metadata: output filename pattern, language tag, ordering and dependencies
+     - An RDFHP template that renders code text, getting ?id (node id), ?context (context descriptor)
+     - you can recursively call COMPILE(?lang, ?id, ?context) inside RDFHP
    - Language-specific code generators (one per language) implement helper functions (e.g., type mapping, identifier escaping) and handle scope injection (mapping `{object}.age` to `table_alias.age` for SQL or `obj.age` for JS).
-   - Security: code templates are sandboxed; generator helpers restrict access (e.g., permission checks injected as RDF facts can deny reading certain RDF paths).
 
 ---
 
-## Editor component schema (conceptual)
+## Node Identifiers
 
-Each editor component is described as an RDF resource with:
-- `rdfop:componentId` — IRI/ID
-- `rdfop:forTypes` — which attribute types or entity types it supports (rdf:list or path expression)
-- `rdfop:template` — an RDFHP fragment describing the HTML UI with parameter bindings (see RDFHP syntax below)
-- `rdfop:bindings` — mapping of UI controls to RDF paths (subject/predicate)
-- `rdfop:maxDepth` — max recursion depth
-- `rdfop:mode` — read/write or read-only
-- `rdfop:previewQuery` — optional SPARQL to provide sample data for preview mode
-
-Example RDFHP-like template concept (for binding):
-```
-PARAMETER ?id "id"      // id from the router
-SELECT ?label WHERE { ?id rdf:label ?label }
-?><div class="field">
-  <label><?rdf PRINT HTML ?label ?></label>
-  <input data-bind="rdf:object=?id; rdf:predicate=rdf:label" />
-</div>
-```
+- **Types and editor components**: Use stable names like `rdfop:GeneratorRule`.  
+- **Instances created by editors**: Use UUID-based IRIs (`urn:uuid:...`).
 
 ---
 
-## Generator rule schema (conceptual)
+## Editor Components
 
-A `rdfop:GeneratorRule` contains:
-- `rdfop:ruleId`
-- `rdfop:language` (e.g., "sql", "js", "python")
-- `rdfop:sparql` (SPARQL string)
-- `rdfop:template` (RDFHP template string or pointer)
-- `rdfop:outputPath` (filename pattern, templated)
-- `rdfop:dependsOn` (other rule IRIs to run first)
-- `rdfop:params` (parameter definitions for the rule)
+- Editor components are described in the schema as instances of `rdfop:EditorComponent`.  
+- Each editor declares:
+  - `rdfop:forTypes`: which entity types or data types it edits.  
+  - `rdfop:template`: an RDFHP preview template containing SPARQL and static rendering.  
+  - `rdfop:componentParam`: JSON parameters (e.g. ListEditor’s subEditor).  
+  - `rdfop:initTemplate`: for creating default node data with a new UUID.  
+  - `rdfop:dbContext`: defines which memcp database the editor operates on (code vs data).
 
-Templates use RDFHP syntax:
-```
-PREFIX ex: <https://example.org/model#>
-SELECT ?class ?p WHERE {?class a ex:Class; ex:prop ?p}
-BEGIN
--- class: <?rdf PRINT RAW ?class ?>
--- prop: <?rdf PRINT RAW ?p ?>
-END
-```
+**Binding Mechanism:**  
+- RDFHP templates are run over the code database to produce a the vue.js template
+- data is fetched using **RDFJSON** queries
+- Vue.js is used to bind to the values fetched from the **RDFJSON** query
+- RDFJSON produces a JSON object and provenance metadata (linking attributes back to triples).  
+- Vue.js binds UI components to JSON data fields (`data.fieldname`).
 
-Templates can include helper invocations and call other generator rules by including their `ruleId` (recursive composition).
+**Save-back:**  
+- Edits generate two TTL snippets:  
+  - `DELETE.ttl` removes old triples.  
+  - `INSERT.ttl` adds new triples.  
+- This supports rollbackable transactions and avoids write-after-write hazards.  
+
+**Recursive Deletion / GC:**  
+- Each entity type can define `rdfop:recursiveDelete` rules.  
+- Memcp also runs a garbage collector to remove dangling unpinned nodes.  
 
 ---
 
-## Expression compilation strategy
+## RDFJSON Query & Save-Back
 
-Expressions (e.g., `age >= 18`) are stored as first-class RDF nodes (an AST). Example:
-```ttl
-:expr1 a rdfop:Expr ;
-  rdfop:operator "gte" ;
-  rdfop:left :ageRef ;
-  rdfop:right 18 .
+RDFJSON is basically SPARQL but with JSON_ARRAYAGG() and JSON_OBJECTAGG() extension that provides additional provenance data to know the exact triples that were considered building the result.
+
+Example SPARQL:  
+```sparql
+SELECT ?person (JSON_ARRAYAGG(?phone) AS ?phones)
+WHERE {
+  ?person ex:hasPhone ?phone .
+}
+GROUP BY ?person
 ```
 
-A generator rule per language compiles these ASTs:
-- A SPARQL query extracts the AST structure for an expression.
-- Template renders per-language code using helpers:
-  - `expr_to_js`, `expr_to_sql`, `expr_to_py`, etc.
-- Scope injection: generator receives a `?scopeMapping` param (e.g., `?scopeMapping = { "self": "u", "order": "o" }`) so variable references become `u.age` (SQL `u.age`), `self.age` (JS `self.age`) or `order["age"]` (Python), as required.
-- Security rules can be evaluated at generation time by querying RDF policies; if forbidden, the generator emits comments/warnings or raises errors.
+Produces JSON:  
+```json
+{
+  "person": "Alice",
+  "phones": ["123", "456"]
+}
+```
+
+Or:
+```sparql
+SELECT (JSON_OBJECTAGG(?property, ?value) AS ?jsonObject)
+WHERE {
+  ex:Alice ?property ?value .
+}
+```
+
+which produces:
+
+```json
+{
+  "jsonObject": {
+    "ex:name": "Alice",
+    "ex:age": 30,
+    "ex:city": "Berlin"
+  }
+}
+```
 
 ---
 
-## AST, Expressions, and UI editing
+## Code Generators
 
-Because the editor schema is expressive, you can create components to edit AST nodes:
-- Node type definitions in RDF: `rdfop:ExprType` with allowed operators and arities.
-- Editor components render operator dropdowns and sub-editors for operands (recursively), respecting `rdfop:maxDepth`.
+- There is **one generator per language and node type**.  
+- Generators are instances of `rdfop:CodeGenerator`.  
+- for instance: Expressions (AST) are compiled recursively using `COMPILE(language, node, context)`.  
+- The `context` may be an RDF node or a JSON object carrying scope (e.g., table aliases in SQL).
 
----
-
-## Roadmap (milestones)
-
-1. **M0 — Core (Weeks 0–2)**
-   - Produce self-describing TTL schema for editor components, code generator, generator rules, and minimal attribute typing. (see `schema.ttl`)
-   - Build a CLI to load a module (TTL) into memcp and run a generator rule.
-
-2. **M1 — Prototype UI (Weeks 2–6)**
-   - Basic graph canvas using cytoscape.js and RDFHP templates for UI snippets.
-   - Property inspector and Turtle editor.
-   - Template editor (Monaco) with "run preview" that executes rule SPARQL and renders template preview.
-
-3. **M2 — Language targets & helpers (Weeks 6–10)**
-   - Implement JS and SQL generator helpers (type mapping, escaping, scope injection).
-   - Expression compiler for simple ASTs.
-
-4. **M3 — Advanced UI & AST editors (Weeks 10–14)**
-   - AST-specific editor components (operator dropdown, nested operand panes).
-   - Configurable recursion depth & circular reference protection.
-   - Module packaging and parameters UI.
-
-5. **M4 — Security & multi-tenant (Weeks 14–18)**
-   - Policy injection mechanism via RDF facts.
-   - Sandbox generator execution (containerized).
-
-6. **M5 — Libraries & marketplace (Weeks 18–26)**
-   - Template & generator rule marketplace, versioned modules, example modules (UML → SQL + React CRUD).
-   - Documentation and onboarding tutorials.
+**Example:**  
+SQL generator template for addition:  
+```rdfhp
+SELECT ?left, ?right WHERE { ?id a "operator+", left ?left, right ?right. }
+?>(<? COMPILE("sql", ?left, ?ctx) ?>) + (<? COMPILE("sql", ?right, ?ctx) ?>)<?
+```
 
 ---
 
-## Best practices
+## Export Filters
 
-- Keep generator rules small and composable (one SPARQL + one template per concern).
-- Use SHACL or lightweight SPARQL validation shapes to validate models before generation.
-- Use parameters for scope mapping and environment-specific config.
-- Sandbox template execution and validate template outputs (no arbitrary shell execution).
-
----
-
-## RDFHP quick reference (used in templates)
-
-- `PARAMETER ?param "name"` — bind GET/compile parameter
-- `PREFIX p: <...>` — declare prefixes
-- `SELECT ...` — run SPARQL; `BEGIN ... END` loops over results
-- `<?rdf PRINT RAW ?var ?>` / `HTML` / `SQL` — safe printing
+- `rdfop:attrKind` distinguishes attributes:  
+  - `"essential"`, `"code"`, `"codemeta"`, `"ui"`, `"userdata"`.  
+- Export filters whitelist/blacklist attributes when extracting `.ttl` files.  
+- Metadata like UML X/Y coordinates can be excluded.  
 
 ---
 
-## What I produced
-- `schema.ttl` — a self-describing RDF schema for the editor + generator (Turtle).
-- `roadmap.md` — this roadmap/instructions document.
+## Immutable COW Graphs
 
-Place these files into a module package and `load_ttl` them into RDFOP/memcp. Use the RDFOP runtime (see https://github.com/launix-de/rdfop) to run RDFHP templates and generate artifacts.
+- Code definitions are **immutable**: editing creates a copy-on-write version of the root node tree.  
+- Subtrees are reused; only modified nodes are copied.  
+- Tenants/users reference specific code root nodes:  
+  - Production uses stable pinned roots.  
+  - Test users can use new roots.  
+- Garbage collector removes unreferenced roots.  
+- Data nodes are **mutable**.  
+
+---
+
+## Separation of Code and Data
+
+- Different memcp databases (schemas) are used:  
+  - Code definitions to render the editor templates: for example `code_instance35`.  
+  - Runtime data for the RDFJSON queries: for example `data_instance55`.  
+
+---
+
+## Realtime Collaboration
+
+- memcp stores triples in an SQL table `(s,p,o)`.  
+- TRIGGERs capture changes and stream them via websockets.  
+- Clients subscribe do node ids via a watchlist
+- Editors merge incoming diffs into local Vue.js models.  
+
+---
+
+## Translation and Localization
+
+- All components, filters, and types may define `rdfs:label` with language tags.  
+- Editors fetch localized names for displaying titles, buttons, and labels.  
+
+---
+
+## Implementation Roadmap
+
+### Phase 0 — Core (Weeks 0–2)
+- Implement RDF schema (`schema.ttl`).  
+- Implement RDFJSON query runner with provenance.  
+- Implement memcp transaction system with `DELETE/INSERT` TTL apply.  
+
+### Phase 1 — Editor Binding (Weeks 2–6)
+- Develop Vue.js binding layer to RDFJSON.  
+- Implement save-back (JSON diff → TTL patches).  
+- Implement editor initializers with `rdfop:initTemplate`.  
+
+### Phase 2 — Generators (Weeks 6–10)
+- Implement SQL and JS generators.  
+- Recursive AST compilation via `COMPILE()`.  
+- Support context propagation.  
+
+### Phase 3 — Export & Versioning (Weeks 10–14)
+- Implement filtered exports via `rdfop:attrKind`.  
+- Implement immutable COW roots and pinning/GC.  
+- Implement recursive delete rules.  
+
+### Phase 4 — Realtime & Multi-Tenant (Weeks 14–20)
+- Implement websocket streaming with memcp TRIGGERs.  
+- Implement watchlists.  
+- Implement schema/dbContext propagation for separating code and data.  
+
+---
+
+## Deliverables
+
+- `schema.ttl` — self-describing schema.  
+- `roadmap.md` — this document.  
+- Prototype editors (ListEditor, SimpleText).  
+- Example generator rules (UML → SQL).  
+- Export and versioning system.  
+- Realtime collaborative editor.  
 
 ---

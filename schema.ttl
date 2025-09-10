@@ -1,125 +1,55 @@
-
 @prefix rdfop: <https://launix.de/rdfop/schema#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-@prefix XMLSchema: <http://www.w3.org/2001/XMLSchema#> .
 
 ################################################################
-# RDFOP — Self-describing schema for Editor components & Generators
-# Use the rdfop: prefix for all vocabulary
+# RDFOP Final Self-Describing Schema
 ################################################################
 
-# Top-level concepts
+# Classes
 rdfop:EntityType a rdfs:Class .
 rdfop:Attribute a rdfs:Class .
 rdfop:EditorComponent a rdfs:Class .
-rdfop:GeneratorRule a rdfs:Class .
 rdfop:CodeGenerator a rdfs:Class .
-rdfop:Expr a rdfs:Class .           # AST expression node
+rdfop:Expr a rdfs:Class .
 rdfop:Parameter a rdfs:Class .
+rdfop:ChangeSet a rdfs:Class .
+rdfop:Tenant a rdfs:Class .
+# TODO: rdfop:Enum
 
-# Properties for EntityType / Attribute
-rdfop:entityId a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
+# TODO: owl:cardinality 1 for required attributes
+# TODO: owl:minCardinality 1 for required multi-attributes
+# TODO: owl:maxCardinality 1 for optional attributes
+# TODO: schema verifier inside the transaction
+
+# Entity / Attribute definitions
 rdfop:hasAttribute a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfop:Attribute .
 rdfop:attrName a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal .
 rdfop:attrType a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Resource . # reference to type or datatype
 rdfop:cardinality a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal . # "0..1", "1", "0..n"
-rdfop:constraint a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal . 
+rdfop:attrKind a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal .
+rdfop:recursiveDelete a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
 
-# EditorComponent properties
-rdfop:componentId a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal .
-rdfop:forTypes a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Resource . # which attr types/entity types it supports
-rdfop:template a rdf:Property ; rdfs:domain rdfop:EditorComponent, rdfop:GeneratorRule ; rdfs:range rdfs:Literal . # RDFHP template body
-rdfop:bindings a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # mapping JSON (subject,predicate)
-rdfop:maxDepth a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range xsd:integer .
-rdfop:mode a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # "read", "write", "preview"
-rdfop:previewQuery a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # SPARQL for preview
+# Editor components
+rdfop:forTypes a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfop:EntityType .
+rdfop:parameters a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # specify the parameters that have to be set to instanciate this component
+rdfop:input a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFJSON query (can use the parameters) to fetch the `data` object
+rdfop:inputVariable a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # bind JSON to this object? (for nested templates that should be able to access their parents data)
+rdfop:template a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFHP query (can use the parameters) to render the vue.js template
+rdfop:initTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # JSON object for new items
 
-# GeneratorRule properties
-rdfop:ruleId a rdf:Property ; rdfs:domain rdfop:GeneratorRule ; rdfs:range rdfs:Literal .
-rdfop:language a rdf:Property ; rdfs:domain rdfop:GeneratorRule ; rdfs:range rdfs:Literal . # "sql", "js", "python", ...
-rdfop:sparql a rdf:Property ; rdfs:domain rdfop:GeneratorRule ; rdfs:range rdfs:Literal .
-rdfop:outputPath a rdf:Property ; rdfs:domain rdfop:GeneratorRule ; rdfs:range rdfs:Literal .
-rdfop:dependsOn a rdf:Property ; rdfs:domain rdfop:GeneratorRule ; rdfs:range rdfop:GeneratorRule .
-rdfop:params a rdf:Property ; rdfs:domain rdfop:GeneratorRule ; rdfs:range rdfop:Parameter .
+# Code Generators
+rdfop:handlesNodeType a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfop:EntityType .
+rdfop:language a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal .
+rdfop:template a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal .
 
-# CodeGenerator properties
-rdfop:generatorId a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal .
-rdfop:languageTag a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal .
-rdfop:helperLib a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal . # reference to helper functions
+# Expressions (TODO: add more Classes: ExprConstant, ExprUnaryOperator, ExprBinaryOperator and diversify)
+rdfop:operator a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal .
+rdfop:left a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdf:Resource .
+rdfop:right a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdf:Resource .
+rdfop:value a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal .
 
-# Expr (AST) properties
-rdfop:operator a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal . # e.g. "gte", "and", "or", "plus"
-rdfop:left a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Resource .
-rdfop:right a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Resource .
-rdfop:value a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal . # leaf literal
-
-# Parameter
-rdfop:paramId a rdf:Property ; rdfs:domain rdfop:Parameter ; rdfs:range rdfs:Literal .
-rdfop:paramType a rdf:Property ; rdfs:domain rdfop:Parameter ; rdfs:range rdfs:Literal .
-rdfop:paramDefault a rdf:Property ; rdfs:domain rdfop:Parameter ; rdfs:range rdfs:Literal .
-
-################################################################
-# Example: Built-in Editor Components (self-describing instances)
-################################################################
-
-rdfop:SimpleTextEditor a rdfop:EditorComponent ;
-  rdfop:componentId "SimpleText" ;
-  rdfop:forTypes XMLSchema#string ;
-  rdfop:template '
-PREFIX lx: <https://launix.de/rdf/#>
-PARAMETER ?id "id"
-SELECT ?p ?value WHERE { ?id ?p ?value }
-?><label><?rdf PRINT HTML ?p ?></label>
-<input value="<?rdf PRINT HTML ?value ?>" data-rdf-subject="<?rdf PRINT RAW ?id ?>" data-rdf-predicate="<?rdf PRINT RAW ?p ?>" />
-' ;
-  rdfop:mode "write" ;
-  rdfop:maxDepth 1 .
-
-rdfop:ListEditor a rdfop:EditorComponent ;
-  rdfop:componentId "ListEditor" ;
-  rdfop:forTypes "collection" ;
-  rdfop:template '
-PREFIX lx: <https://launix.de/rdf/#>
-PARAMETER ?id "id"
-SELECT ?item WHERE { ?id ?p ?item }
-BEGIN
-  ?><div class="list-item"><?rdf PRINT HTML ?item ?></div><?
-END
-' ;
-  rdfop:mode "write" ;
-  rdfop:maxDepth 3 .
-
-################################################################
-# Example: GeneratorRule instance for UML->SQL (illustrative)
-################################################################
-
-rdfop:UmlToSql a rdfop:GeneratorRule ;
-  rdfop:ruleId "uml_to_sql" ;
-  rdfop:language "sql" ;
-  rdfop:sparql '
-PREFIX rdfop: <https://launix.de/rdfop/schema#>
-SELECT ?class ?className (GROUP_CONCAT(CONCAT(?attrName,"::",?attrType,"::",?card) ; SEPARATOR="|||") AS ?props)
-WHERE {
-  ?class a rdfop:EntityType; rdfop:entityId ?className; rdfop:hasAttribute ?a .
-  ?a rdfop:attrName ?attrName; ?a rdfop:attrType ?attrType .
-  OPTIONAL { ?a rdfop:cardinality ?card }
-} GROUP BY ?class ?className
-' ;
-  rdfop:template '
-PREFIX ex: <https://example.org/model#>
-SELECT ?class ?className ?props WHERE { ?class a rdfop:EntityType; rdfop:entityId ?className; rdfop:hasAttribute ?a .
-  ?a rdfop:attrName ?attrName . } 
-BEGIN
-/* CREATE TABLE <?rdf PRINT RAW ?className ?> */
-<?rdf PRINT RAW ?props ?>
-END
-' ;
-  rdfop:outputPath "sql/{{ruleId}}_{{className}}.sql" .
-
-################################################################
-# Notes
-# - This TTL is a starting point — extend rdfop:* vocabulary as needed.
-# - Store templates as literal strings (RDFHP body) or as pointers to files.
-################################################################
+# Labels and localization
+rdfs:label a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
