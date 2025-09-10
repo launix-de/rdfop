@@ -94,3 +94,12 @@ From the server console, you can import `.ttl` files via:
 ```
 (load_ttl "rdf" (stream "example.ttl"))
 ```
+
+## Vim syntax for Turtle (.ttl)
+
+This repo includes a simple Vim/Neovim syntax highlighter for Turtle files.
+
+- Files: `vim/ftdetect/ttl.vim` and `vim/syntax/ttl.vim`
+- Usage (Vim): copy both files to `~/.vim/ftdetect/` and `~/.vim/syntax/`, or add this repo’s `vim/` directory to your `runtimepath`.
+- Usage (Neovim): copy to `~/.config/nvim/ftdetect/` and `~/.config/nvim/syntax/`.
+- Open any `*.ttl` file to get highlighting (directives, IRIs, QNames, strings, numbers, booleans, comments, etc.).
