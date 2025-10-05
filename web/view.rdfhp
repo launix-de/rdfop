@@ -33,13 +33,13 @@ parameter ?s "id"
   <h3 class="mt-4">Back Edges</h3>
   <div class="card">
     <table class="table">
-      <tr><th>Peer-Subject</th><th>Property</th></tr>
+      <tr><th>Property</th><th>Peer-Subject</th></tr>
       <?rdf
       SELECT ?s2, ?p WHERE {?s2 ?p ?s}
       BEGIN
         ?><tr>
-          <td><a href='view?id=<?rdf print url ?s2 ?>' onclick="return openOverlayLink(this)"><?rdf print html ?s2 ?></a></td>
           <td><?rdf print html ?p ?></td>
+          <td><a href='view?id=<?rdf print url ?s2 ?>' onclick="return openOverlayLink(this)"><?rdf print html ?s2 ?></a></td>
         </tr><?rdf
       ELSE
         ?><tr><td colspan="2" class="empty">No back edges.</td></tr><?rdf

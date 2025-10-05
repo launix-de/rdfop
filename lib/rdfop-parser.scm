@@ -57,8 +57,8 @@ Copyright (C) 2024  Carl-Philip Hänsch
 			(cons '("loop" query body) rest) '('begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
 			(cons '("loop" query body else) rest) '('begin '('set 'm '('mutex)) '('set 'o '('once '('lambda '('result) '('if 'result (compile else context))))) (rdf_queryplan schema query definitions context (lambda (cols context) '('!begin '('o false) '('m '('lambda '() (compile body context)))))) '('o true) (compile rest context))
 			(cons '("include" filename) rest) (!begin (watch filename (lambda (content) (rdf_include_cache filename (parse_rdfhp schema content watch)))) '('begin '('eval '(rdf_include_cache filename)) (compile rest context)))
-			(cons '("call" func args) rest) (if (nil? (rdf_functions func)) (error "unknown function: " func) '('begin (merge '((rdf_functions func)) args) (compile rest context)))
-			(cons '("setcall" sym func args) rest) (if (nil? (rdf_functions func)) (error "unknown function: " func) '('begin '('set sym (merge '((rdf_functions func)) args)) (compile rest context)))
+			(cons '("call" func args) rest) (if (nil? (rdf_functions func)) (error "unknown function: " func) '('begin (merge '((rdf_functions func)) (map args (lambda (a) (rdf_replace_ctx a context)))) (compile rest context)))
+			(cons '("setcall" sym func args) rest) (if (nil? (rdf_functions func)) (error "unknown function: " func) '('begin '('set sym (merge '((rdf_functions func)) (map args (lambda (a) (rdf_replace_ctx a context))))) (compile rest context)))
 			(cons unknown rest) (error "unknown rdfhp statement: " unknown)
 			'() nil
 		)))

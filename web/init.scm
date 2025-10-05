@@ -29,9 +29,16 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (createdatabase "rdf" true)
 (createtable "rdf" "rdf" '('("column" "s" "text" '() '()) '("column" "p" "text" '() '()) '("column" "o" "text" '() '()) '("unique" "u" '("s" "p" "o"))) '() true)
 
-/* load base schema + example data */
-(try (lambda () (load_ttl "rdf" (load "schema.ttl"))) (lambda (e) (print "")))
-(load_ttl "rdf" (load "example.ttl")) /* read example ttl file */
+/* simple loader */
+/* intentionally no robustness here; memcp/load_ttl should handle multi-statements */
+
+/* load base schema + example data (from project root) */
+(try (lambda () (load_ttl "rdf" (load "../schema.ttl"))) (lambda (e)
+    (try (lambda () (load_ttl "rdf" (load "schema.ttl"))) (lambda (e2) (print "")))
+))
+(try (lambda () (load_ttl "rdf" (load "../example.ttl"))) (lambda (e)
+    (try (lambda () (load_ttl "rdf" (load "example.ttl"))) (lambda (e2) (print "")))
+))
 
 /* custom function for query execution */
 (rdf_functions "execute_rdf" (lambda (req res) (begin
@@ -165,26 +172,24 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
                     (begin
                         (set st (newsession))
                         (set lastError nil)
-                        /* First try full TTL */
-                        (try (lambda () (begin (load_ttl "rdf" ttl) (st "imported" true))) (lambda (e1) (begin
-                            (set lastError e1)
-                            /* Fallback: split by ".\n" and import parts (skip empties); ignore errors per-part */
-                            (set s (replace ttl "\r\n" "\n"))
-                            /* Extract header (@prefix lines) to preserve prefixes */
-                            (set header "")
-                            (match s
-                                (regex "(?ms:^((?:[\t ]*@prefix[^\n]*\n)+))" _ h) (set header h)
-                                s nil
+                        (set s (replace ttl "\r\n" "\n"))
+                        /* Extract header (@prefix lines) to preserve prefixes */
+                        (set header "")
+                        (match s
+                            (regex "(?ms:^((?:[\t ]*@prefix[^\n]*\n)+))" _ h) (set header h)
+                            s nil
+                        )
+                        /* Try full TTL */
+                        (try (lambda () (begin (load_ttl "rdf" ttl) (st "imported" true))) (lambda (e1) (set lastError e1)))
+                        /* Also try per-statement import to catch any missed statements */
+                        (set parts (split s ".\n"))
+                        (define import_part (lambda (p) (begin
+                            (set p2 (replace (replace (replace (replace p "\r" "") "\n" "") "\t" "") " " ""))
+                            (if (or (nil? p2) (equal? p2 "")) true
+                                (try (lambda () (begin (load_ttl "rdf" (concat header p ".\n")) (st "imported" true))) (lambda (e2) (begin (set lastError e2) true)))
                             )
-                            (set parts (split s ".\n"))
-                            (define import_part (lambda (p) (begin
-                                (set p2 (replace (replace (replace (replace p "\r" "") "\n" "") "\t" "") " " ""))
-                                (if (or (nil? p2) (equal? p2 "")) true
-                                    (try (lambda () (begin (load_ttl "rdf" (concat header p ".\n")) (st "imported" true))) (lambda (e2) (begin (set lastError e2) true)))
-                                )
-                            )))
-                            (map parts import_part)
                         )))
+                        (map parts import_part)
                         (if (st "imported")
                             (print "<div class='card pad' style='border-left:4px solid #059669'>Imported TTL successfully.</div>")
                             (if (nil? lastError)
@@ -211,6 +216,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (watch "ttl-import.rdfhp" (lambda (content) (rdfop_route "/ttl-import" "rdf" content watch)))
 (watch "view.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content watch)))
 (watch "rdf.rdfhp" (lambda (content) (rdfop_route "/rdf" "rdf" content watch)))
+(watch "component.rdfhp" (lambda (content) (rdfop_route "/component" "rdf" content watch)))
 
 /* handcraftet about page */
 (rdfop_routes "/about" (lambda (req res) (begin

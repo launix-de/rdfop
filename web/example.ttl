@@ -1,7 +1,0 @@
-@prefix lx: <https://launix.de/rdf/#>.
-
-1
-	a lx:page ;
-	lx:title "Velkomen" ;
-	lx:content "Text" .
-
