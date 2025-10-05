@@ -53,3 +53,14 @@ rdfop:value a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal .
 
 # Labels and localization
 rdfs:label a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
+
+################################################################
+# Runtime View Components (minimal bootstrap)
+################################################################
+
+# Declare HTMLView as an entity type used for runtime components
+HTMLView a rdfop:EntityType .
+
+# Minimal mapping: which view function to invoke for this type
+# The engine will call rdf_functions named "view_" + value
+HTMLView viewFunction "HTMLView" .

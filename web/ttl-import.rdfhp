@@ -7,7 +7,7 @@
   <?rdf CALL import_ttl(REQ, RES) ?>
 
   <div class="card pad">
-    <form method="GET" action="ttl-import" onsubmit="return openOverlaySubmitReplace(this)">
+    <form method="POST" action="ttl-import" onsubmit="return openOverlaySubmitReplace(this)">
       <textarea class="input w-100 h-30vh" name="ttl" placeholder="@prefix ex: &lt;http://example.com#&gt; .
 ex:foo a ex:Thing ."></textarea>
       <div class="mt-2">

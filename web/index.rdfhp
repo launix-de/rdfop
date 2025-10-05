@@ -52,7 +52,9 @@
     <a role="menuitem" href="/ttl-import">TTL import</a>
   </nav>
   <div class="canvas">
-    <div class="board" role="region" aria-label="Canvas"></div>
+    <div class="board" role="region" aria-label="Canvas">
+      <?rdf CALL render_component("main", REQ, RES) ?>
+    </div>
   </div>
   <script>
     (function(){
@@ -124,7 +126,26 @@
       // Unified overlay request: body=null -> GET, body=FormData -> POST; replace toggles in-place update
       async function overlayFetch(url, body, replace){
         const headers = { 'X-Requested-With': 'fetch', 'Accept': 'text/html' };
-        const opts = body ? { method: 'POST', body, headers } : { headers };
+        let opts = { headers };
+        if (body != null) {
+          // Ensure x-www-form-urlencoded for server-side bodyParts parsing
+          if (body instanceof URLSearchParams) {
+            headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+            opts = { method: 'POST', headers, body: body.toString() };
+          } else if (typeof body === 'string') {
+            headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+            opts = { method: 'POST', headers, body };
+          } else {
+            try {
+              const p = new URLSearchParams(body);
+              headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+              opts = { method: 'POST', headers, body: p.toString() };
+            } catch(e) {
+              // Fallback: still send, but server may not parse
+              opts = { method: 'POST', headers, body };
+            }
+          }
+        }
         let target;
         if (replace && window.__overlayStack.length) target = window.__overlayStack[window.__overlayStack.length-1];
         if (!target) target = buildOverlaySkeleton();
@@ -145,7 +166,11 @@
       // Helper to submit forms into overlays (stacked)
       window.openOverlaySubmit = function(form){
         const action = form.getAttribute('action') || location.href;
+        const method = (form.getAttribute('method') || 'GET').toUpperCase();
         const params = new URLSearchParams(new FormData(form));
+        if (method === 'POST') {
+          return overlayFetch(action, params, false), false;
+        }
         const url = action + (action.includes('?') ? '&' : '?') + params.toString();
         return overlayFetch(url, null, false), false;
       };
@@ -153,7 +178,11 @@
       // Helper to submit forms replacing current overlay
       window.openOverlaySubmitReplace = function(form){
         const action = form.getAttribute('action') || location.href;
+        const method = (form.getAttribute('method') || 'GET').toUpperCase();
         const params = new URLSearchParams(new FormData(form));
+        if (method === 'POST') {
+          return overlayFetch(action, params, true), false;
+        }
         const url = action + (action.includes('?') ? '&' : '?') + params.toString();
         return overlayFetch(url, null, true), false;
       };

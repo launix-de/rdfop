@@ -2,3 +2,5 @@ peter a Person;
  forename "Peter";
  surname "Griffindor".
 
+main a HTMLView;
+ html "<h1>Welcome</h1>".
