@@ -37,11 +37,14 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (rdf_functions "execute_rdf" (lambda (req res) (begin
     (set q (req "query"))
     (set bodyParts (req "bodyParts"))
-    (set rdf (coalesce (if (nil? q) nil (q "rdf")) (if (nil? bodyParts) nil (bodyParts "rdf"))))
+    /* extract 'rdf' from query/bodyParts assoc lists */
+    (set rdfParam (try (lambda () (reduce_assoc (q) (lambda (acc k v) (if (equal? k "rdf") v acc)) nil)) (lambda (e) nil)))
+    (set rdfBody (try (lambda () (reduce_assoc (bodyParts) (lambda (acc k v) (if (equal? k "rdf") v acc)) nil)) (lambda (e) nil)))
+    (set rdf (coalesce rdfParam rdfBody "SELECT ?s, ?p, ?o WHERE {?s ?p ?o}"))
 	(set print (res "print"))
 
 	/* compile and execute rdf */
-	(define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
+    (define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
 	/*(print "formula=" formula)*/
 	(set state (newsession))
 	(set print_header (once (lambda (o) (begin
@@ -69,7 +72,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	(print "<h3 class='mt-4'>RDF console</h3>")
 	(print "<div class='card pad'>")
 	(print "<form method='POST' action='rdf' onsubmit='return openOverlaySubmitReplace(this)'>")
-	(print "<textarea class='input w-100 h-30vh' name='rdf'>" (htmlentities rdf) "</textarea>")
+    (print "<textarea class='input w-100 h-30vh' name='rdf'>" (htmlentities rdf) "</textarea>")
 	(print "<div class='mt-2'>")
 	(print "<button class='btn primary' type='button' onclick='return openOverlaySubmitReplace(this.form)'>Execute</button> ")
 	(print "<button class='btn' type='button' onclick='return openOverlaySubmit(this.form)'>Open in new overlay</button>")
@@ -89,29 +92,39 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (begin (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil))))
     (define resultrow (lambda (o) (begin
         (set t (o "t"))
-        /* Try mapping via RDF: t viewFunction ?f */
-        (set fn (try (lambda () (begin
-            (set qmap (concat "SELECT ?f WHERE { " t " viewFunction ?f }"))
-            (set f nil)
-            (define resultrow (lambda (o2) (set f (o2 "f"))))
-            (define fm (parse_sparql "rdf" qmap))
-            (eval fm)
-            (if (nil? f) (concat "view_" t) (concat "view_" f))
-        )) (lambda (e) (concat "view_" t))))
-        (set handler (rdf_functions fn))
-        (if (nil? handler) nil (begin
+        /* Prefer data-defined RDFHP template: t viewTemplate ?tpl */
+        (set tpl nil)
+        (try (lambda () (begin
+            (set qtpl (concat "SELECT ?tpl WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"))
+            (define resultrow (lambda (o3) (set tpl (o3 "tpl"))))
+            (define ftpl (parse_sparql "rdf" qtpl))
+            (eval ftpl)
+        )) (lambda (e) nil))
+        (if (not (nil? tpl)) (begin
             (set printed true)
-            (handler id req res)
+            (set tpl2 (concat "\n" (replace tpl "?id" id)))
+            (define watchnil (lambda (fn cb) nil))
+            (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
+            (if (not (nil? formula)) (eval formula))
+        ) (begin
+            /* Try mapping via RDF: t viewFunction ?f */
+            (set fn (try (lambda () (begin
+                (set qmap (concat "SELECT ?f WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewFunction> ?f }"))
+                (set f nil)
+                (define resultrow (lambda (o2) (set f (o2 "f"))))
+                (define fm (parse_sparql "rdf" qmap))
+                (eval fm)
+                (if (nil? f) (concat "view_" t) (concat "view_" f))
+            )) (lambda (e) (concat "view_" t))))
+            (set handler (rdf_functions fn))
+            (if (nil? handler) nil (begin
+                (set printed true)
+                (handler id req res)
+            ))
         ))
     )))
     (if (not (nil? formula)) (eval formula))
-    /* Fallback: raw HTML if html property is present */
-    (if (not printed) (begin
-        (set q2 (concat "SELECT ?h WHERE { " id " html ?h }"))
-        (define formula2 (try (lambda () (parse_sparql "rdf" q2)) (lambda (e) nil)))
-        (define resultrow (lambda (o) (begin (set printed true) (if (nil? (o "h")) (print "") (print (o "h"))))))
-        (if (not (nil? formula2)) (eval formula2))
-    ))
+    /* No legacy fallback: require schema-backed templates or view methods */
     (if (not printed)
         (print "<div class='empty'>Component not found or no view method.</div>")
     )
@@ -120,8 +133,9 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 /* View method: HTMLView(html) — renders raw HTML content */
 (rdf_functions "view_HTMLView" (lambda (id req res) (begin
     (set print (res "print"))
-    (set q (concat "SELECT ?h WHERE { " id " html ?h }"))
-    (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (begin (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil))))
+    /* Strict: only prefixed schema property */
+    (set q (concat "SELECT ?h WHERE { " id " <https://launix.de/rdfop/schema#html> ?h }"))
+    (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil)))
     (define resultrow (lambda (o) (if (nil? (o "h")) (print "") (print (o "h")))))
     (if (not (nil? formula)) (eval formula))
 )))
@@ -147,16 +161,39 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (if (or (nil? ttl) (equal? ttl ""))
             (print "<div class='card pad' style='border-left:4px solid #f59e0b'>No TTL provided.</div>")
             (try
-            (lambda ()
-                (begin
-                    /* robust import: allow multiple statements separated by ".\n" */
-                    (set s (replace ttl "\r\n" "\n"))
-                    (set parts (split s ".\n"))
-                    (define import_part (lambda (p) (if (or (nil? p) (equal? p "")) true (load_ttl "rdf" (concat p ".\n")))))
-                    (map parts import_part)
-                    (print "<div class='card pad' style='border-left:4px solid #059669'>Imported TTL successfully.</div>")
+                (lambda ()
+                    (begin
+                        (set st (newsession))
+                        (set lastError nil)
+                        /* First try full TTL */
+                        (try (lambda () (begin (load_ttl "rdf" ttl) (st "imported" true))) (lambda (e1) (begin
+                            (set lastError e1)
+                            /* Fallback: split by ".\n" and import parts (skip empties); ignore errors per-part */
+                            (set s (replace ttl "\r\n" "\n"))
+                            /* Extract header (@prefix lines) to preserve prefixes */
+                            (set header "")
+                            (match s
+                                (regex "(?ms:^((?:[\t ]*@prefix[^\n]*\n)+))" _ h) (set header h)
+                                s nil
+                            )
+                            (set parts (split s ".\n"))
+                            (define import_part (lambda (p) (begin
+                                (set p2 (replace (replace (replace (replace p "\r" "") "\n" "") "\t" "") " " ""))
+                                (if (or (nil? p2) (equal? p2 "")) true
+                                    (try (lambda () (begin (load_ttl "rdf" (concat header p ".\n")) (st "imported" true))) (lambda (e2) (begin (set lastError e2) true)))
+                                )
+                            )))
+                            (map parts import_part)
+                        )))
+                        (if (st "imported")
+                            (print "<div class='card pad' style='border-left:4px solid #059669'>Imported TTL successfully.</div>")
+                            (if (nil? lastError)
+                                (print "<div class='card pad' style='border-left:4px solid #f59e0b'>No triples imported.</div>")
+                                (print "<div class='card pad' style='border-left:4px solid #b91c1c'><div class='error'>Import error: " (htmlentities lastError) "</div></div>")
+                            )
+                        )
+                    )
                 )
-            )
                 (lambda (e)
                     (print "<div class='card pad' style='border-left:4px solid #b91c1c'><div class='error'>Import error: " (htmlentities e) "</div></div>")
                 )

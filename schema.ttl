@@ -55,6 +55,23 @@ rdfop:value a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal .
 rdfs:label a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
 
 ################################################################
+# Runtime View Components (bootstrap)
+################################################################
+
+# Property to map a type to a view function name
+rdfop:viewFunction a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
+rdfop:viewTemplate a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
+
+# Component type: HTMLView
+rdfop:HTMLView a rdfop:EntityType .
+
+# Attribute for HTMLView content
+rdfop:html a rdf:Property ; rdfs:domain rdfop:HTMLView ; rdfs:range rdfs:Literal .
+
+# Map HTMLView to the RDFHP template used by the renderer
+rdfop:HTMLView rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> . SELECT ?h WHERE { ?id rdfop:html ?h } BEGIN PRINT RAW ?h END" .
+
+################################################################
 # Runtime View Components (minimal bootstrap)
 ################################################################
 

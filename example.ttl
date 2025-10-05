@@ -1,6 +1,8 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+
 peter a Person;
  forename "Peter";
  surname "Griffindor".
 
-main a HTMLView;
- html "<h1>Welcome</h1>".
+main a rdfop:HTMLView;
+ rdfop:html "<h1>Welcome</h1>".
