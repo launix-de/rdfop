@@ -4,5 +4,6 @@ peter a Person;
  forename "Peter";
  surname "Griffindor".
 
-main a rdfop:HTMLView;
- rdfop:html "<h1>Welcome</h1>".
+main a rdfop:Page;
+ rdfop:pageTitle "RDFOP Hello World";
+ rdfop:pageBody "<p>This page is stored entirely as RDF data. Use the Edit button to update the title or HTML content.</p><p>Changes are written back into the triple store and re-rendered via <code>rdfop:EditorComponent</code>.</p>".

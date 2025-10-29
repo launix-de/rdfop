@@ -196,6 +196,60 @@
         }
       }, true);
 
+      document.addEventListener('submit', async function(e){
+        const form = e.target;
+        if (!form || !form.dataset || !form.dataset.rdfopPageEditor) return;
+
+        e.preventDefault();
+
+        const container = form.closest('[data-page-target]');
+        const status = container ? container.querySelector('.page-edit__status') : null;
+        const subject = (form.elements.subject && form.elements.subject.value || '').trim();
+
+        if (!subject) {
+          if (status) {
+            status.textContent = 'Missing subject.';
+            status.className = 'page-edit__status error';
+          }
+          return;
+        }
+
+        const title = form.elements.title && form.elements.title.value || '';
+        const bodyValue = form.elements.body && form.elements.body.value || '';
+        const iri = subject.startsWith('<') ? subject : (subject.startsWith('_:') ? subject : `<${subject}>`);
+        const literalTitle = JSON.stringify(title);
+        const literalBody = JSON.stringify(bodyValue);
+        const sparql = `PREFIX rdfop: <https://launix.de/rdfop/schema#>
+DELETE { ${iri} rdfop:pageTitle ?oldTitle . ${iri} rdfop:pageBody ?oldBody . }
+INSERT { ${iri} rdfop:pageTitle ${literalTitle} . ${iri} rdfop:pageBody ${literalBody} . }
+WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pageBody ?oldBody } }`;
+
+        if (status) {
+          status.textContent = 'Saving...';
+          status.className = 'page-edit__status muted';
+        }
+
+        try {
+          const resp = await fetch('/rdf/rdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sparql-update' },
+            body: sparql
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          if (status) {
+            status.textContent = 'Saved. Reloading...';
+            status.className = 'page-edit__status';
+          }
+          setTimeout(() => window.location.reload(), 400);
+        } catch (err) {
+          if (status) {
+            status.textContent = 'Save failed.';
+            status.className = 'page-edit__status error';
+          }
+          console.error('rdfop page editor save failed', err);
+        }
+      }, true);
+
       // Helper for links to open stacked overlays
       window.openOverlayLink = function(a){
         const href = (a && a.getAttribute) ? a.getAttribute('href') : a;

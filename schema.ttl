@@ -72,6 +72,105 @@ rdfop:html a rdf:Property ; rdfs:domain rdfop:HTMLView ; rdfs:range rdfs:Literal
 rdfop:HTMLView rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> . SELECT ?h WHERE { ?id rdfop:html ?h } BEGIN PRINT RAW ?h END" .
 
 ################################################################
+# Demo Page Type + Editor Components (hello world)
+################################################################
+
+rdfop:Page a rdfop:EntityType .
+
+rdfop:pageTitle a rdf:Property ;
+  rdfs:domain rdfop:Page ;
+  rdfs:range rdfs:Literal .
+
+rdfop:pageBody a rdf:Property ;
+  rdfs:domain rdfop:Page ;
+  rdfs:range rdfs:Literal .
+
+rdfop:Page rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+SELECT ?title ?body ?subjectStr WHERE {
+  OPTIONAL { ?id rdfop:pageTitle ?title0 }
+  OPTIONAL { ?id rdfop:pageBody ?body0 }
+  BIND(STR(?id) AS ?subjectStr)
+  BIND(IF(bound(?title0), ?title0, "Untitled Page") AS ?title)
+  BIND(IF(bound(?body0), ?body0, "<p class='empty'>No page content.</p>") AS ?body)
+}
+BEGIN
+?><div class='page-view pad'>
+  <div class='page-view__header'>
+    <h1 class='page-view__title'><?rdf PRINT HTML ?title ?></h1>
+    <button class='btn' type='button' onclick='return openOverlay("/component?id=https://launix.de/rdfop/schema#PageEditComponent&subject=<?rdf PRINT URL ?subjectStr ?>")'>Edit</button>
+  </div>
+  <div class='page-view__body'><?rdf PRINT RAW ?body ?></div>
+</div><?rdf
+END" .
+
+rdfop:PageViewTemplate a rdfop:EntityType .
+
+rdfop:PageViewTemplate rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?subject "subject"
+SELECT ?page ?pageStr ?title ?body WHERE {
+  BIND(IRI(?subject) AS ?page)
+  BIND(STR(?page) AS ?pageStr)
+  OPTIONAL { ?page rdfop:pageTitle ?title0 }
+  OPTIONAL { ?page rdfop:pageBody ?body0 }
+  BIND(IF(bound(?title0), ?title0, "Untitled Page") AS ?title)
+  BIND(IF(bound(?body0), ?body0, "<p class='empty'>No page content.</p>") AS ?body)
+  FILTER(STRLEN(?subject) > 0)
+}
+BEGIN
+?><div class='page-view pad' data-page-target='<?rdf PRINT HTML ?pageStr ?>'>
+  <div class='page-view__header'>
+    <h1 class='page-view__title'><?rdf PRINT HTML ?title ?></h1>
+    <button class='btn' type='button' onclick='return openOverlay("/component?id=https://launix.de/rdfop/schema#PageEditComponent&subject=<?rdf PRINT URL ?pageStr ?>")'>Edit</button>
+  </div>
+  <div class='page-view__body'><?rdf PRINT RAW ?body ?></div>
+</div><?rdf
+ELSE
+?><div class='empty'>No page selected.</div><?rdf
+END" .
+
+rdfop:PageViewComponent a rdfop:EditorComponent , rdfop:PageViewTemplate ;
+  rdfop:forTypes rdfop:Page .
+
+rdfop:PageEditTemplate a rdfop:EntityType .
+
+rdfop:PageEditTemplate rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?subject "subject"
+SELECT ?page ?pageStr ?title ?body WHERE {
+  BIND(IRI(?subject) AS ?page)
+  BIND(STR(?page) AS ?pageStr)
+  OPTIONAL { ?page rdfop:pageTitle ?title0 }
+  OPTIONAL { ?page rdfop:pageBody ?body0 }
+  BIND(IF(bound(?title0), ?title0, "Untitled Page") AS ?title)
+  BIND(IF(bound(?body0), ?body0, "") AS ?body)
+  FILTER(STRLEN(?subject) > 0)
+}
+BEGIN
+?><div class='page-edit pad' data-page-target='<?rdf PRINT HTML ?pageStr ?>'>
+  <h2 class='page-edit__headline'>Edit Page</h2>
+  <form class='page-edit__form' data-rdfop-page-editor='1'>
+    <input type='hidden' name='subject' value='<?rdf PRINT HTML ?pageStr ?>'>
+    <label class='page-edit__field'>
+      <span class='muted'>Title</span>
+      <input class='input w-100' type='text' name='title' value='<?rdf PRINT HTML ?title ?>' required>
+    </label>
+    <label class='page-edit__field'>
+      <span class='muted'>Body (HTML)</span>
+      <textarea class='input w-100 h-30vh' name='body'><?rdf PRINT HTML ?body ?></textarea>
+    </label>
+    <div class='mt-2'>
+      <button class='btn primary' type='submit'>Save</button>
+    </div>
+  </form>
+  <div class='page-edit__status muted'>Make changes and press Save.</div>
+</div><?rdf
+ELSE
+?><div class='empty'>No page selected.</div><?rdf
+END" .
+
+rdfop:PageEditComponent a rdfop:EditorComponent , rdfop:PageEditTemplate ;
+  rdfop:forTypes rdfop:Page .
+
+################################################################
 # Runtime View Components (minimal bootstrap)
 ################################################################
 
