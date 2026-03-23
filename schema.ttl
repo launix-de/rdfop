@@ -85,7 +85,7 @@ rdfop:pageBody a rdf:Property ;
   rdfs:domain rdfop:Page ;
   rdfs:range rdfs:Literal .
 
-rdfop:Page rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+rdfop:Page rdfop:viewTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 SELECT ?title ?body ?subjectStr WHERE {
   OPTIONAL { ?id rdfop:pageTitle ?title0 }
   OPTIONAL { ?id rdfop:pageBody ?body0 }
@@ -101,11 +101,11 @@ BEGIN
   </div>
   <div class='page-view__body'><?rdf PRINT RAW ?body ?></div>
 </div><?rdf
-END" .
+END""" .
 
 rdfop:PageViewTemplate a rdfop:EntityType .
 
-rdfop:PageViewTemplate rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+rdfop:PageViewTemplate rdfop:viewTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?subject "subject"
 SELECT ?page ?pageStr ?title ?body WHERE {
   BIND(IRI(?subject) AS ?page)
@@ -126,14 +126,14 @@ BEGIN
 </div><?rdf
 ELSE
 ?><div class='empty'>No page selected.</div><?rdf
-END" .
+END""" .
 
 rdfop:PageViewComponent a rdfop:EditorComponent , rdfop:PageViewTemplate ;
   rdfop:forTypes rdfop:Page .
 
 rdfop:PageEditTemplate a rdfop:EntityType .
 
-rdfop:PageEditTemplate rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+rdfop:PageEditTemplate rdfop:viewTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?subject "subject"
 SELECT ?page ?pageStr ?title ?body WHERE {
   BIND(IRI(?subject) AS ?page)
@@ -165,18 +165,8 @@ BEGIN
 </div><?rdf
 ELSE
 ?><div class='empty'>No page selected.</div><?rdf
-END" .
+END""" .
 
 rdfop:PageEditComponent a rdfop:EditorComponent , rdfop:PageEditTemplate ;
   rdfop:forTypes rdfop:Page .
 
-################################################################
-# Runtime View Components (minimal bootstrap)
-################################################################
-
-# Declare HTMLView as an entity type used for runtime components
-HTMLView a rdfop:EntityType .
-
-# Minimal mapping: which view function to invoke for this type
-# The engine will call rdf_functions named "view_" + value
-HTMLView viewFunction "HTMLView" .

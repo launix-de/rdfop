@@ -34,10 +34,12 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 /* load base schema + example data (from project root) */
 (try (lambda () (load_ttl "rdf" (load "../schema.ttl"))) (lambda (e)
-    (try (lambda () (load_ttl "rdf" (load "schema.ttl"))) (lambda (e2) (print "")))
+    (print "schema.ttl load from ../ failed: " e)
+    (try (lambda () (load_ttl "rdf" (load "schema.ttl"))) (lambda (e2) (print "schema.ttl load failed: " e2)))
 ))
 (try (lambda () (load_ttl "rdf" (load "../example.ttl"))) (lambda (e)
-    (try (lambda () (load_ttl "rdf" (load "example.ttl"))) (lambda (e2) (print "")))
+    (print "example.ttl load from ../ failed: " e)
+    (try (lambda () (load_ttl "rdf" (load "example.ttl"))) (lambda (e2) (print "example.ttl load failed: " e2)))
 ))
 
 /* custom function for query execution */
@@ -98,12 +100,12 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (set q (concat "SELECT ?t WHERE { " id " a ?t }"))
     (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (begin (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil))))
     (define resultrow (lambda (o) (begin
-        (set t (o "t"))
+        (set t (o "?t"))
         /* Prefer data-defined RDFHP template: t viewTemplate ?tpl */
         (set tpl nil)
         (try (lambda () (begin
             (set qtpl (concat "SELECT ?tpl WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"))
-            (define resultrow (lambda (o3) (set tpl (o3 "tpl"))))
+            (define resultrow (lambda (o3) (set tpl (o3 "?tpl"))))
             (define ftpl (parse_sparql "rdf" qtpl))
             (eval ftpl)
         )) (lambda (e) nil))
@@ -118,7 +120,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
             (set fn (try (lambda () (begin
                 (set qmap (concat "SELECT ?f WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewFunction> ?f }"))
                 (set f nil)
-                (define resultrow (lambda (o2) (set f (o2 "f"))))
+                (define resultrow (lambda (o2) (set f (o2 "?f"))))
                 (define fm (parse_sparql "rdf" qmap))
                 (eval fm)
                 (if (nil? f) (concat "view_" t) (concat "view_" f))
