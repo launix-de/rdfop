@@ -99,19 +99,20 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     /* Resolve all rdf types for id, then try view_<Type>(id, req, res) */
     (set q (concat "SELECT ?t WHERE { " id " a ?t }"))
     (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (begin (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil))))
+    (set _rc (newsession))
     (define resultrow (lambda (o) (begin
-        (set t (o "?t"))
+        (_rc "t" (o "?t"))
         /* Prefer data-defined RDFHP template: t viewTemplate ?tpl */
-        (set tpl nil)
+        (_rc "tpl" nil)
         (try (lambda () (begin
             (set qtpl (concat "SELECT ?tpl WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"))
-            (define resultrow (lambda (o3) (set tpl (o3 "?tpl"))))
+            (define resultrow (lambda (o3) (_rc "tpl" (o3 "?tpl"))))
             (define ftpl (parse_sparql "rdf" qtpl))
             (eval ftpl)
         )) (lambda (e) nil))
-        (if (not (nil? tpl)) (begin
-            (set printed true)
-            (set tpl2 (concat "\n" (replace tpl "?id" id)))
+        (if (not (nil? (_rc "tpl"))) (begin
+            (_rc "printed" true)
+            (set tpl2 (concat "\n" (replace (_rc "tpl") "?id" id)))
             (define watchnil (lambda (fn cb) nil))
             (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
             (if (not (nil? formula)) (eval formula))
@@ -119,22 +120,22 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
             /* Try mapping via RDF: t viewFunction ?f */
             (set fn (try (lambda () (begin
                 (set qmap (concat "SELECT ?f WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewFunction> ?f }"))
-                (set f nil)
-                (define resultrow (lambda (o2) (set f (o2 "?f"))))
+                (_rc "f" nil)
+                (define resultrow (lambda (o2) (_rc "f" (o2 "?f"))))
                 (define fm (parse_sparql "rdf" qmap))
                 (eval fm)
-                (if (nil? f) (concat "view_" t) (concat "view_" f))
-            )) (lambda (e) (concat "view_" t))))
+                (if (nil? (_rc "f")) (concat "view_" (_rc "t")) (concat "view_" (_rc "f")))
+            )) (lambda (e) (concat "view_" (_rc "t")))))
             (set handler (rdf_functions fn))
             (if (nil? handler) nil (begin
-                (set printed true)
+                (_rc "printed" true)
                 (handler id req res)
             ))
         ))
     )))
     (if (not (nil? formula)) (eval formula))
     /* No legacy fallback: require schema-backed templates or view methods */
-    (if (not printed)
+    (if (not (_rc "printed"))
         (print "<div class='empty'>Component not found or no view method.</div>")
     )
 )))
