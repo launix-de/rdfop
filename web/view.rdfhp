@@ -2,7 +2,8 @@
 
 parameter ?s "id"
 
-?><div class="view-snippet">
+?><style>.view-snippet td { white-space: pre-wrap; word-break: break-all; }</style>
+<div class="view-snippet">
   <h2>Detail of <?rdf print html ?s ?></h2>
 
   <h3 class="mt-4">Properties</h3>
