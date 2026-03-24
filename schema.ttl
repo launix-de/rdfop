@@ -74,9 +74,10 @@ rdfop:HTMLView_view a rdfop:EditorComponent ;
   rdfop:forTypes rdfop:HTMLView ;
   rdfop:componentName "view" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
-SELECT ?h WHERE { $ID rdfop:html ?h }
+PARAMETER ?id "id"
+SELECT ?h WHERE { ?id rdfop:html ?h }
 BEGIN
-?><div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML $RAWID ?>'>
+?><div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
   <button class='rdfop-edit-btn' onclick='rdfopEdit(this)'>&#x270E;</button>
   <?rdf PRINT RAW ?h ?>
 </div><?rdf
@@ -87,9 +88,10 @@ rdfop:HTMLView_edit a rdfop:EditorComponent ;
   rdfop:forTypes rdfop:HTMLView ;
   rdfop:componentName "edit" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
-SELECT ?h WHERE { $ID rdfop:html ?h }
+PARAMETER ?id "id"
+SELECT ?h WHERE { ?id rdfop:html ?h }
 BEGIN
-?><div class='rdfop-c rdfop-c--editing' data-rdfop-id='<?rdf PRINT HTML $RAWID ?>' data-rdfop-prop='https://launix.de/rdfop/schema#html' data-rdfop-old='<?rdf PRINT JSON ?h ?>'>
+?><div class='rdfop-c rdfop-c--editing' data-rdfop-id='<?rdf PRINT HTML ?id ?>' data-rdfop-prop='https://launix.de/rdfop/schema#html' data-rdfop-old='<?rdf PRINT JSON ?h ?>'>
   <div class='rdfop-edit-toolbar'>
     <button onclick='rdfopCommit(this)'>&#x2714;</button>
     <button onclick='rdfopCancel(this)'>&#x2718;</button>
@@ -100,7 +102,7 @@ BEGIN
 END""" .
 
 # Legacy fallback for render_component (server-side RDFHP without edit)
-rdfop:HTMLView rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> . SELECT ?h WHERE { $ID rdfop:html ?h } BEGIN PRINT RAW ?h END" .
+rdfop:HTMLView rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> . PARAMETER ?id \"id\" SELECT ?h WHERE { ?id rdfop:html ?h } BEGIN PRINT RAW ?h END" .
 
 ################################################################
 # Layout Components
@@ -127,12 +129,13 @@ rdfop:TabGroup_view a rdfop:EditorComponent ;
   rdfop:forTypes rdfop:TabGroup ;
   rdfop:componentName "view" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
-SELECT ?dir WHERE { $ID rdfop:tabDirection ?dir }
+PARAMETER ?id "id"
+SELECT ?dir WHERE { ?id rdfop:tabDirection ?dir }
 BEGIN
-?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-id='<?rdf PRINT HTML $RAWID ?>'>
+?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
   <div class='rdfop-tabs__bar'>
     <?rdf
-    SELECT ?tab, ?label WHERE { ?tab rdfop:parent $ID . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label }
+    SELECT ?tab, ?label WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label }
     BEGIN
     ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' onclick='rdfopTabSwitch(this)'>
       <span class='rdfop-tabs__label' ondblclick='rdfopTabRename(this)'><?rdf PRINT HTML ?label ?></span>
@@ -143,7 +146,7 @@ BEGIN
   </div>
   <div class='rdfop-tabs__content'>
     <?rdf
-    SELECT ?tab, ?child WHERE { ?tab rdfop:parent $ID . ?tab a rdfop:Tab . ?tab rdfop:children ?child }
+    SELECT ?tab, ?child WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:children ?child }
     BEGIN
     ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>'><?rdf CALL render_component(?child, REQ, RES) ?></div><?rdf
     END

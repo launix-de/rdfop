@@ -100,15 +100,20 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 )))
 
 /* helper: render an RDFHP template string with ?id substituted */
+/* template compile cache */
+(set _tpl_cache (newsession))
 (define render_rdfhp_template (lambda (tpl id req res) (begin
     (set print (res "print"))
-    /* For IRIs with :, inject a dynamic prefix _s_ so SPARQL avoids <> syntax */
-    (if (match id (regex ":" _) true false)
-        (set tpl2 (concat "\n@PREFIX _s_: <" id "> .\n" (replace (replace tpl "$RAWID" id) "$ID" "_s_:")))
-        (set tpl2 (concat "\n" (replace (replace tpl "$RAWID" id) "$ID" id)))
-    )
-    (define watchnil (lambda (fn cb) nil))
-    (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b><pre>" (htmlentities (substr tpl2 0 300)) "</pre></div>")))))
+    /* compile once, cache by template string hash */
+    (set cache_key (fnv_hash tpl))
+    (set formula (_tpl_cache cache_key))
+    (if (nil? formula) (begin
+        (define watchnil (lambda (fn cb) nil))
+        (try (lambda () (begin
+            (set formula (parse_rdfhp "rdf" (concat "\n" tpl) watchnil))
+            (_tpl_cache cache_key formula)
+        )) (lambda (e) (print (concat "<div class='error'>Template compile error: <b>" (htmlentities e) "</b></div>"))))
+    ))
     (if (not (nil? formula)) (eval formula))
 )))
 
@@ -147,9 +152,19 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         )) (lambda (e) nil))
     )
 
-    /* 3. Render the template */
-    (if (not (nil? (_rc "tpl")))
-        (render_rdfhp_template (_rc "tpl") id req res)
+    /* 3. Render the template — inject id into query params */
+    (if (not (nil? (_rc "tpl"))) (begin
+        /* build a req wrapper that adds id to query params */
+        (set _q (newsession))
+        (_q "id" id)
+        (_q "mode" mode)
+        (set wrapped_req (newsession))
+        (wrapped_req "query" _q)
+        (wrapped_req "method" (try (lambda () (req "method")) (lambda (e) "GET")))
+        (wrapped_req "body" (try (lambda () (req "body")) (lambda (e) (lambda () ""))))
+        (wrapped_req "bodyParts" (try (lambda () (req "bodyParts")) (lambda (e) (lambda () '()))))
+        (render_rdfhp_template (_rc "tpl") id wrapped_req res)
+    )
         (print "<div class='empty'>Component not found or no view method.</div>")
     )
 )))
