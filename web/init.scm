@@ -247,11 +247,55 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (rdfop_routes "/rdfop-render" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/html")
     ((res "status") 200)
-    (set q (req "query"))
-    (set id (q "id"))
-    (set mode (coalesce (q "mode") "view"))
-    (print "rdfop-render: id=" id " mode=" mode)
-    ((rdf_functions "render_component") id req res)
+    ((rdf_functions "render_component") ((req "query") "id") req res)
+)))
+
+/* POST /rdfop-create — create a new node: parent=ID&type=Tab (returns new node id) */
+(rdfop_routes "/rdfop-create" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/plain")
+    (set body_raw (try (lambda () ((req "body"))) (lambda (e) "")))
+    (set bp (newsession))
+    (map (split body_raw "&") (lambda (pair) (begin
+        (set parts (split pair "="))
+        (set k (urldecode (replace (car parts) "+" " ")))
+        (set v (urldecode (replace (coalesce (car (cdr parts)) "") "+" " ")))
+        (bp k v)
+    )))
+    (set parent_id (bp "parent"))
+    (set node_type (bp "type"))
+    (if (or (nil? parent_id) (nil? node_type)) (begin
+        ((res "status") 400)
+        ((res "print") "missing parent or type")
+    ) (begin
+        (set new_id (concat "urn:uuid:" (uuid)))
+        /* compute next order number: count existing children */
+        (set _cnt (newsession))
+        (_cnt "n" 0)
+        (set sparql_parent (if (match parent_id (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
+        (define resultrow (lambda (o) (_cnt "n" (+ (_cnt "n") 1))))
+        (try (lambda () (eval (parse_sparql "rdf" (concat "SELECT ?c WHERE { ?c <https://launix.de/rdfop/schema#parent> " sparql_parent " }")))) (lambda (e) nil))
+        (set order (+ (_cnt "n") 1))
+        /* insert the new node */
+        (set ttl (concat
+            "<" new_id "> a <" node_type "> .\n"
+            "<" new_id "> <https://launix.de/rdfop/schema#parent> " sparql_parent " .\n"
+            "<" new_id "> <https://launix.de/rdfop/schema#order> \"" order "\" .\n"
+        ))
+        /* type-specific defaults */
+        (if (equal? node_type "https://launix.de/rdfop/schema#Tab") (begin
+            (set child_id (concat "urn:uuid:" (uuid)))
+            (set ttl (concat ttl
+                "<" new_id "> <https://launix.de/rdfop/schema#tabLabel> \"New Tab\" .\n"
+                "<" new_id "> <https://launix.de/rdfop/schema#children> <" child_id "> .\n"
+                "<" child_id "> a <https://launix.de/rdfop/schema#HTMLView> .\n"
+                "<" child_id "> <https://launix.de/rdfop/schema#parent> <" new_id "> .\n"
+                "<" child_id "> <https://launix.de/rdfop/schema#html> \"<p>New tab content</p>\" .\n"
+            ))
+        ))
+        (try (lambda () (load_ttl "rdf" ttl)) (lambda (e) (begin ((res "status") 500) ((res "print") (concat "error: " e)))))
+        ((res "status") 200)
+        ((res "print") new_id)
+    ))
 )))
 
 /* POST /rdfop-save — receives urlencoded delete=TTL&insert=TTL */
