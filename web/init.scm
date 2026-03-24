@@ -100,21 +100,24 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 )))
 
 /* helper: render an RDFHP template string with ?id substituted */
-/* template compile cache */
+/* template compile cache: compiled formulas keyed by fnv_hash of template string */
 (set _tpl_cache (newsession))
-(define render_rdfhp_template (lambda (tpl id req res) (begin
-    (set print (res "print"))
-    /* compile once, cache by template string hash */
-    (set cache_key (fnv_hash tpl))
-    (set formula (_tpl_cache cache_key))
-    (if (nil? formula) (begin
+(define _compile_tpl (lambda (tpl) (begin
+    (set key (fnv_hash tpl))
+    (set cached (_tpl_cache key))
+    (if (not (nil? cached)) cached (begin
         (define watchnil (lambda (fn cb) nil))
-        (try (lambda () (begin
-            (set formula (parse_rdfhp "rdf" (concat "\n" tpl) watchnil))
-            (_tpl_cache cache_key formula)
-        )) (lambda (e) (print (concat "<div class='error'>Template compile error: <b>" (htmlentities e) "</b></div>"))))
+        (set compiled (parse_rdfhp "rdf" (concat "\n" tpl) watchnil))
+        (_tpl_cache key compiled)
+        compiled
     ))
-    (if (not (nil? formula)) (eval formula))
+)))
+(define render_rdfhp_template (lambda (tpl id req res) (begin
+    (define print (res "print"))
+    (try (lambda () (begin
+        (define formula (_compile_tpl tpl))
+        (eval formula)
+    )) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
 )))
 
 /* component renderer: renders a component for a given subject + mode
@@ -244,7 +247,11 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (rdfop_routes "/rdfop-render" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/html")
     ((res "status") 200)
-    ((rdf_functions "render_component") ((req "query") "id") req res)
+    (set q (req "query"))
+    (set id (q "id"))
+    (set mode (coalesce (q "mode") "view"))
+    (print "rdfop-render: id=" id " mode=" mode)
+    ((rdf_functions "render_component") id req res)
 )))
 
 /* POST /rdfop-save — receives urlencoded delete=TTL&insert=TTL */
