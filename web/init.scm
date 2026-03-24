@@ -100,8 +100,11 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 )))
 
 /* helper: render an RDFHP template string with ?id substituted */
-(define render_rdfhp_template (lambda (tpl id print) (begin
-    (set tpl2 (concat "\n" (replace tpl "?id" id)))
+(define render_rdfhp_template (lambda (tpl id req res) (begin
+    (set print (res "print"))
+    /* use <urn:...> for SPARQL if id contains : */
+    (set sparql_id (if (match id (regex ":" _) true false) (concat "<" id ">") id))
+    (set tpl2 (concat "\n" (replace (replace tpl "$RAWID" id) "$ID" sparql_id)))
     (define watchnil (lambda (fn cb) nil))
     (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>")))))
     (if (not (nil? formula)) (eval formula))
@@ -114,6 +117,8 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (rdf_functions "render_component" (lambda (id req res) (begin
     (set print (res "print"))
     (set mode (coalesce (try (lambda () ((req "query") "mode")) (lambda (e) nil)) "view"))
+    /* wrap IRIs containing : in angle brackets for SPARQL */
+    (set sparql_id (if (match id (regex ":" _) true false) (concat "<" id ">") id))
     (set _rc (newsession))
 
     /* 1. Try EditorComponent with matching forTypes + componentName */
@@ -126,7 +131,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
             "rdfop:forTypes ?type ; "
             "rdfop:componentName \"" mode "\" ; "
             "rdfop:componentTemplate ?tpl . "
-            id " a ?type }"
+            sparql_id " a ?type }"
         )))
     )) (lambda (e) nil))
 
@@ -135,14 +140,14 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (try (lambda () (begin
             (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
             (eval (parse_sparql "rdf" (concat
-                "SELECT ?tpl WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"
+                "SELECT ?tpl WHERE { " sparql_id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"
             )))
         )) (lambda (e) nil))
     )
 
     /* 3. Render the template */
     (if (not (nil? (_rc "tpl")))
-        (render_rdfhp_template (_rc "tpl") id print)
+        (render_rdfhp_template (_rc "tpl") id req res)
         (print "<div class='empty'>Component not found or no view method.</div>")
     )
 )))

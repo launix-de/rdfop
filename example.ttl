@@ -1,8 +1,17 @@
 @prefix rdfop: <https://launix.de/rdfop/schema#> .
 
-peter a Person;
- forename "Peter";
- surname "Griffindor".
+# Root node: a TabGroup with tabs on top
+main a rdfop:TabGroup ;
+  rdfop:tabDirection "top" .
 
-main a rdfop:HTMLView;
- rdfop:html "<h1>Hello World</h1>".
+# First tab
+_:tab1 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "Welcome" ;
+  rdfop:order "1" ;
+  rdfop:children _:hw .
+
+# HTMLView leaf inside the tab
+_:hw a rdfop:HTMLView ;
+  rdfop:parent _:tab1 ;
+  rdfop:html "<h1>Hello World</h1><p>Welcome to RDFOP. Click the pencil to edit this content.</p>" .

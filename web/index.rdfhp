@@ -49,6 +49,26 @@
   .rdfop-edit-toolbar button { background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 16px; }
   .rdfop-edit-toolbar button:hover { background: #f1f5f9; }
   .rdfop-editor { display: block; width: calc(100% - 24px); min-height: 50vh; font-family: monospace; font-size: 13px; border: 1px solid var(--ring); border-radius: 8px; padding: 10px; margin: 8px 12px; resize: vertical; box-sizing: border-box; }
+  /* TabGroup */
+  .rdfop-tabs { display: flex; width: 100%; height: 100%; }
+  .rdfop-tabs--top, .rdfop-tabs--bottom { flex-direction: column; }
+  .rdfop-tabs--left, .rdfop-tabs--leftRotated { flex-direction: row; }
+  .rdfop-tabs--right, .rdfop-tabs--rightRotated { flex-direction: row-reverse; }
+  .rdfop-tabs--bottom { flex-direction: column-reverse; }
+  .rdfop-tabs__bar { display: flex; gap: 0; background: #f1f5f9; border-bottom: 1px solid var(--ring); padding: 0 8px; flex-shrink: 0; }
+  .rdfop-tabs--left .rdfop-tabs__bar, .rdfop-tabs--right .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
+  .rdfop-tabs--right .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
+  .rdfop-tabs--leftRotated .rdfop-tabs__bar, .rdfop-tabs--rightRotated .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
+  .rdfop-tabs--leftRotated .rdfop-tabs__tab, .rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-lr; }
+  .rdfop-tabs--rightRotated .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
+  .rdfop-tabs__tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; user-select: none; }
+  .rdfop-tabs__tab:hover { background: #e2e8f0; }
+  .rdfop-tabs__tab--active { border-bottom-color: #0ea5e9; font-weight: 600; }
+  .rdfop-tabs__add { padding: 8px 12px; cursor: pointer; background: none; border: none; font-size: 16px; color: var(--muted); }
+  .rdfop-tabs__add:hover { color: var(--text); }
+  .rdfop-tabs__content { flex: 1; overflow: auto; position: relative; }
+  .rdfop-tabs__panel { display: none; width: 100%; height: 100%; }
+  .rdfop-tabs__panel--active { display: block; }
 </style>
 </head><body>
   <div class="brand">RDFOP</div>
@@ -314,6 +334,35 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         } catch(e) { console.error('rdfopCommit failed', e); return; }
         rdfopSwap(el, 'view');
       };
+
+      // === Tab helpers ===
+      window.rdfopTabSwitch = function(tab) {
+        const tabs = tab.closest('.rdfop-tabs');
+        if (!tabs) return;
+        const tabId = tab.dataset.tabId;
+        // Deactivate all tabs + panels
+        tabs.querySelectorAll('.rdfop-tabs__tab').forEach(t => t.classList.remove('rdfop-tabs__tab--active'));
+        tabs.querySelectorAll('.rdfop-tabs__panel').forEach(p => p.classList.remove('rdfop-tabs__panel--active'));
+        // Activate clicked
+        tab.classList.add('rdfop-tabs__tab--active');
+        const panel = tabs.querySelector('.rdfop-tabs__panel[data-tab-id="' + tabId + '"]');
+        if (panel) panel.classList.add('rdfop-tabs__panel--active');
+      };
+
+      // Auto-activate first tab on page load
+      document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.rdfop-tabs').forEach(tabs => {
+          const first = tabs.querySelector('.rdfop-tabs__tab');
+          if (first) rdfopTabSwitch(first);
+        });
+      });
+      // Also run immediately for server-rendered content
+      setTimeout(function() {
+        document.querySelectorAll('.rdfop-tabs').forEach(tabs => {
+          const first = tabs.querySelector('.rdfop-tabs__tab');
+          if (first && !tabs.querySelector('.rdfop-tabs__tab--active')) rdfopTabSwitch(first);
+        });
+      }, 0);
 
       // Intercept menu clicks
       Array.from(menu.querySelectorAll('a[href]')).forEach(a => {
