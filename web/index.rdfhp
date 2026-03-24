@@ -313,28 +313,28 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
        */
 
       window.rdfopSwap = async function(el, mode) {
-        var id = el.dataset.rdfopId;
-        if (!id) return;
+        var p = JSON.parse(el.dataset.rdfopParams || '{}');
+        p.mode = mode;
         try {
-          var resp = await fetch('/rdfop-render?' + new URLSearchParams({id: id, mode: mode}));
+          var resp = await fetch('/rdfop-render?' + new URLSearchParams(p));
           el.outerHTML = await resp.text();
         } catch(e) { console.error('rdfopSwap', e); }
       };
 
       window.rdfopCommit = async function(btn) {
         var el = btn.closest('.rdfop-c');
-        var id = el.dataset.rdfopId, prop = el.dataset.rdfopProp;
+        var p = JSON.parse(el.dataset.rdfopParams || '{}');
         var oldVal = JSON.parse(el.dataset.rdfopOld || '""');
         var field = el.querySelector('textarea') || el.querySelector('input[type=text]');
-        if (!field || !id || !prop) return;
+        if (!field || !p.id || !p.p) return;
         var newVal = field.value;
         if (oldVal !== newVal) {
-          var sid = id.includes(':') ? '<' + id + '>' : id;
+          var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
           await fetch('/rdfop-save', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'delete=' + encodeURIComponent(sid + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .') +
-                  '&insert=' + encodeURIComponent(sid + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .')
+            body: 'delete=' + encodeURIComponent(sid + ' <' + p.p + '> ' + JSON.stringify(oldVal) + ' .') +
+                  '&insert=' + encodeURIComponent(sid + ' <' + p.p + '> ' + JSON.stringify(newVal) + ' .')
           });
         }
         rdfopSwap(el, 'view');

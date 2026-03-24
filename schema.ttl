@@ -77,28 +77,54 @@ rdfop:HTMLView_view a rdfop:EditorComponent ;
 PARAMETER ?id "id"
 SELECT ?h WHERE { ?id rdfop:html ?h }
 BEGIN
-?><div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#html&quot;}'>
   <button class='rdfop-edit-btn' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>&#x270E;</button>
   <?rdf PRINT RAW ?h ?>
 </div><?rdf
 END""" .
 
-# HTMLView: "edit" component — textarea with save/cancel
-rdfop:HTMLView_edit a rdfop:EditorComponent ;
+# HTMLView: "edit" component — HTMLEdit: textarea with save/cancel
+rdfop:HTMLEdit a rdfop:EditorComponent ;
   rdfop:forTypes rdfop:HTMLView ;
   rdfop:componentName "edit" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
-SELECT ?h WHERE { ?id rdfop:html ?h }
+PARAMETER ?p "p"
+SELECT ?val WHERE { ?id ?p ?val }
 BEGIN
-?><div class='rdfop-c rdfop-c--editing' data-rdfop-id='<?rdf PRINT HTML ?id ?>' data-rdfop-prop='https://launix.de/rdfop/schema#html' data-rdfop-old='<?rdf PRINT JSON ?h ?>'>
+?><div class='rdfop-c rdfop-c--editing' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'>
   <div class='rdfop-edit-toolbar'>
     <button onclick='rdfopCommit(this)'>&#x2714;</button>
     <button onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'>&#x2718;</button>
   </div>
   <!-- TODO: TinyMCE -->
-  <textarea class='rdfop-editor'><?rdf PRINT HTML ?h ?></textarea>
+  <textarea class='rdfop-editor'><?rdf PRINT HTML ?val ?></textarea>
 </div><?rdf
+END""" .
+
+# TextEdit: inline single-line string editor (view = span, edit = input)
+rdfop:TextEdit a rdfop:EntityType .
+
+rdfop:TextEdit_view a rdfop:EditorComponent ;
+  rdfop:forTypes rdfop:TextEdit ;
+  rdfop:componentName "view" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+PARAMETER ?p "p"
+SELECT ?val WHERE { ?id ?p ?val }
+BEGIN
+?><span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' ondblclick='rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?val ?></span><?rdf
+END""" .
+
+rdfop:TextEdit_edit a rdfop:EditorComponent ;
+  rdfop:forTypes rdfop:TextEdit ;
+  rdfop:componentName "edit" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+PARAMETER ?p "p"
+SELECT ?val WHERE { ?id ?p ?val }
+BEGIN
+?><span class='rdfop-c rdfop-textedit rdfop-textedit--editing' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'><input type='text' value='<?rdf PRINT HTML ?val ?>' onkeydown='if(event.key==&quot;Enter&quot;)rdfopCommit(this);if(event.key==&quot;Escape&quot;)rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)' onblur='rdfopCommit(this)' autofocus></span><?rdf
 END""" .
 
 # Legacy fallback for render_component (server-side RDFHP without edit)
