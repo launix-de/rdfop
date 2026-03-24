@@ -82,7 +82,7 @@
   </nav>
   <div class="canvas">
     <div class="board" role="region" aria-label="Canvas">
-      <?rdf CALL render_component("main", REQ, RES) ?>
+      <?rdf CALL render_object("main", REQ, RES) ?>
     </div>
   </div>
   <script>

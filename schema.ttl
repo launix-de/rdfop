@@ -33,8 +33,9 @@ rdfop:attrKind a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Li
 rdfop:recursiveDelete a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
 
 # Editor components
-rdfop:forTypes a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfop:EntityType .
-rdfop:componentName a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # "view", "edit", "view-short", etc.
+/* view/edit predicates link EntityType → EditorComponent: e.g. rdfop:HTMLView rdfop:view rdfop:HTMLView_view */
+rdfop:view a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfop:EditorComponent .
+rdfop:edit a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfop:EditorComponent .
 rdfop:componentTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFHP template string
 rdfop:parameters a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # parameters required to instantiate
 rdfop:input a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFJSON query for data + provenance
@@ -69,10 +70,11 @@ rdfop:HTMLView a rdfop:EntityType .
 # Attribute for HTMLView content
 rdfop:html a rdf:Property ; rdfs:domain rdfop:HTMLView ; rdfs:range rdfs:Literal .
 
-# HTMLView: "view" component — shows content with edit pencil
+# HTMLView components
+rdfop:HTMLView rdfop:view rdfop:HTMLView_view .
+rdfop:HTMLView rdfop:edit rdfop:HTMLEdit .
+
 rdfop:HTMLView_view a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:HTMLView ;
-  rdfop:componentName "view" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 SELECT ?h WHERE { ?id rdfop:html ?h }
@@ -85,8 +87,6 @@ END""" .
 
 # HTMLView: "edit" component — HTMLEdit: textarea with save/cancel
 rdfop:HTMLEdit a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:HTMLView ;
-  rdfop:componentName "edit" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 PARAMETER ?p "p"
@@ -102,12 +102,12 @@ BEGIN
 </div><?rdf
 END""" .
 
-# TextEdit: inline single-line string editor (view = span, edit = input)
-rdfop:TextEdit a rdfop:EntityType .
+# TextEdit: inline single-line string editor (view = span with dblclick, edit = input)
+# Generic — can be used for any type via direct render_component call
+rdfop:Tab rdfop:view rdfop:TextEdit_view .
+rdfop:Tab rdfop:edit rdfop:TextEdit_edit .
 
 rdfop:TextEdit_view a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:TextEdit ;
-  rdfop:componentName "view" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 PARAMETER ?p "p"
@@ -117,8 +117,6 @@ BEGIN
 END""" .
 
 rdfop:TextEdit_edit a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:TextEdit ;
-  rdfop:componentName "edit" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 PARAMETER ?p "p"
@@ -127,8 +125,6 @@ BEGIN
 ?><span class='rdfop-c rdfop-textedit rdfop-textedit--editing' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'><input type='text' value='<?rdf PRINT HTML ?val ?>' onkeydown='if(event.key==&quot;Enter&quot;)rdfopCommit(this);if(event.key==&quot;Escape&quot;)rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)' onblur='rdfopCommit(this)' autofocus></span><?rdf
 END""" .
 
-# Legacy fallback for render_component (server-side RDFHP without edit)
-rdfop:HTMLView rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> . PARAMETER ?id \"id\" SELECT ?h WHERE { ?id rdfop:html ?h } BEGIN PRINT RAW ?h END" .
 
 ################################################################
 # Layout Components
@@ -150,10 +146,10 @@ rdfop:HTMLView rdfop:paletteVisible true .
 rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
 
-# TabGroup "view" component
+# TabGroup components
+rdfop:TabGroup rdfop:view rdfop:TabGroup_view .
+
 rdfop:TabGroup_view a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:TabGroup ;
-  rdfop:componentName "view" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 SELECT ?dir WHERE { ?id rdfop:tabDirection ?dir }
@@ -174,7 +170,7 @@ BEGIN
     <?rdf
     SELECT ?tab, ?child WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:children ?child }
     BEGIN
-    ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>'><?rdf CALL render_component(?child, REQ, RES) ?></div><?rdf
+    ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
     END
     ?>
   </div>

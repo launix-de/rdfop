@@ -120,44 +120,50 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     )) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
 )))
 
-/* component renderer: renders a component for a given subject + mode
-   mode defaults to "view" if not provided
-   RDFHP usage: CALL render_component("main", REQ, RES)
-              or CALL render_component("main", REQ, RES, "edit") */
-(rdf_functions "render_component" (lambda (id req res) (begin
-    (set print (res "print"))
-    (set mode (coalesce (try (lambda () ((req "query") "mode")) (lambda (e) nil)) "view"))
-    /* wrap IRIs containing : in angle brackets for SPARQL */
-    (set sparql_id (if (match id (regex ":" _) true false) (concat "<" id ">") id))
-    (set _rc (newsession))
+/* === Component rendering ===
+   render_component(component_iri, req, res)
+     — the core: looks up template by component IRI, renders with req params
+   render_object(id, req, res)
+     — convenience: finds type of id, looks up component via mode predicate,
+       then delegates to render_component
+   RDFHP usage: CALL render_object("main", REQ, RES)
+*/
 
-    /* 1. Try EditorComponent with matching forTypes + componentName */
+/* render_component: render a specific EditorComponent by its IRI */
+(rdf_functions "render_component" (lambda (comp_iri req res) (begin
+    (set print (res "print"))
+    (set sparql_comp (if (match comp_iri (regex ":" _) true false) (concat "<" comp_iri ">") comp_iri))
+    (set _rc (newsession))
     (try (lambda () (begin
         (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
         (eval (parse_sparql "rdf" (concat
-            "@prefix rdfop: <https://launix.de/rdfop/schema#> . "
-            "SELECT ?tpl WHERE { "
-            "?comp a rdfop:EditorComponent ; "
-            "rdfop:forTypes ?type ; "
-            "rdfop:componentName \"" mode "\" ; "
-            "rdfop:componentTemplate ?tpl . "
-            sparql_id " a ?type }"
+            "SELECT ?tpl WHERE { " sparql_comp " <https://launix.de/rdfop/schema#componentTemplate> ?tpl }"
+        )))
+    )) (lambda (e) nil))
+    (if (not (nil? (_rc "tpl")))
+        (render_rdfhp_template (_rc "tpl") comp_iri req res)
+        (print "<div class='empty'>Component not found: " (htmlentities comp_iri) "</div>")
+    )
+)))
+
+/* render_object: resolve type + mode predicate → component, then render */
+(rdf_functions "render_object" (lambda (id req res) (begin
+    (set print (res "print"))
+    (set mode (coalesce (try (lambda () ((req "query") "mode")) (lambda (e) nil)) "view"))
+    (set sparql_id (if (match id (regex ":" _) true false) (concat "<" id ">") id))
+    (set _rc (newsession))
+
+    /* find component: ?type <mode_predicate> ?component where id a ?type */
+    (set mode_pred (concat "<https://launix.de/rdfop/schema#" mode ">"))
+    (try (lambda () (begin
+        (define resultrow (lambda (o) (_rc "comp" (o "?comp"))))
+        (eval (parse_sparql "rdf" (concat
+            "SELECT ?comp WHERE { " sparql_id " a ?type . ?type " mode_pred " ?comp }"
         )))
     )) (lambda (e) nil))
 
-    /* 2. Fallback: viewTemplate on the EntityType (legacy, only for mode=view) */
-    (if (and (nil? (_rc "tpl")) (equal? mode "view"))
-        (try (lambda () (begin
-            (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
-            (eval (parse_sparql "rdf" (concat
-                "SELECT ?tpl WHERE { " sparql_id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"
-            )))
-        )) (lambda (e) nil))
-    )
-
-    /* 3. Render the template — inject id into query params */
-    (if (not (nil? (_rc "tpl"))) (begin
-        /* build a req wrapper: copy all original query params, set id + mode */
+    (if (not (nil? (_rc "comp"))) (begin
+        /* build wrapped req with id + original params */
         (set _q (newsession))
         (try (lambda () (map_assoc (req "query") (lambda (k v) (_q k v)))) (lambda (e) nil))
         (_q "id" id)
@@ -167,9 +173,9 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (wrapped_req "method" (try (lambda () (req "method")) (lambda (e) "GET")))
         (wrapped_req "body" (try (lambda () (req "body")) (lambda (e) (lambda () ""))))
         (wrapped_req "bodyParts" (try (lambda () (req "bodyParts")) (lambda (e) (lambda () '()))))
-        (render_rdfhp_template (_rc "tpl") id wrapped_req res)
+        ((rdf_functions "render_component") (_rc "comp") wrapped_req res)
     )
-        (print "<div class='empty'>Component not found or no view method.</div>")
+        (print "<div class='empty'>No component for " (htmlentities id) " mode=" (htmlentities mode) "</div>")
     )
 )))
 
@@ -248,7 +254,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (rdfop_routes "/rdfop-render" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/html")
     ((res "status") 200)
-    ((rdf_functions "render_component") ((req "query") "id") req res)
+    ((rdf_functions "render_object") ((req "query") "id") req res)
 )))
 
 /* POST /rdfop-create — create a new node: parent=ID&type=Tab (returns new node id) */
