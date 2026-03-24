@@ -159,7 +159,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (if (not (nil? (_rc "tpl"))) (begin
         /* build a req wrapper: copy all original query params, set id + mode */
         (set _q (newsession))
-        (try (lambda () (map_assoc ((req "query")) (lambda (k v) (_q k v)))) (lambda (e) nil))
+        (try (lambda () (map_assoc (req "query") (lambda (k v) (_q k v)))) (lambda (e) nil))
         (_q "id" id)
         (_q "mode" mode)
         (set wrapped_req (newsession))
