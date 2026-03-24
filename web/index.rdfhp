@@ -48,7 +48,7 @@
   .rdfop-edit-toolbar { display: flex; gap: 6px; justify-content: flex-end; padding: 8px 12px 0; }
   .rdfop-edit-toolbar button { background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 16px; }
   .rdfop-edit-toolbar button:hover { background: #f1f5f9; }
-  .rdfop-editor { width: 100%; min-height: 30vh; font-family: monospace; font-size: 13px; border: 1px solid var(--ring); border-radius: 8px; padding: 10px; margin: 8px 12px; resize: vertical; box-sizing: border-box; }
+  .rdfop-editor { display: block; width: calc(100% - 24px); min-height: 50vh; font-family: monospace; font-size: 13px; border: 1px solid var(--ring); border-radius: 8px; padding: 10px; margin: 8px 12px; resize: vertical; box-sizing: border-box; }
 </style>
 </head><body>
   <div class="brand">RDFOP</div>
@@ -298,7 +298,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         const el = btn.closest('.rdfop-c');
         const id = el.dataset.rdfopId;
         const prop = el.dataset.rdfopProp;
-        const oldVal = el.dataset.rdfopOld || '';
+        const oldVal = JSON.parse(el.dataset.rdfopOld || '""');
         const textarea = el.querySelector('textarea');
         if (!textarea || !id || !prop) return;
         const newVal = textarea.value;
