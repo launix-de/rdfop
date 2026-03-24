@@ -175,6 +175,6 @@ BEGIN
     ?>
   </div>
 </div>
-<script>(function(){var tabs=document.currentScript.previousElementSibling;var first=tabs.querySelector('.rdfop-tabs__tab');if(first)first.click()})()</script><?rdf
+<script>(function(){var tabs=document.currentScript.previousElementSibling;if(!tabs.querySelector('.rdfop-tabs__tab--active')){var first=tabs.querySelector('.rdfop-tabs__tab');if(first)first.click()}})()</script><?rdf
 END""" .
 

@@ -342,12 +342,24 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
 
       window.rdfopCreate = async function(btn, parentId, type) {
         try {
+          var el = btn.closest('.rdfop-c');
           var resp = await fetch('/rdfop-create', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: 'parent=' + encodeURIComponent(parentId) + '&type=' + encodeURIComponent(type)
           });
-          if (resp.ok) rdfopSwap(btn.closest('.rdfop-c'), 'view');
+          if (!resp.ok) return;
+          var newId = await resp.text();
+          /* re-render parent */
+          var p = JSON.parse(el.dataset.rdfopParams || '{}');
+          p.mode = 'view';
+          var r = await fetch('/rdfop-render?' + new URLSearchParams(p));
+          el.outerHTML = await r.text();
+          /* activate the newly created tab by ID */
+          setTimeout(function(){
+            var tab = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + newId.trim() + '"]');
+            if (tab) tab.click();
+          }, 0);
         } catch(e) { console.error('rdfopCreate', e); }
       };
 
