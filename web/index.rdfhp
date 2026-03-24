@@ -299,87 +299,65 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         return false;
       };
 
-      // === RDFOP Component Framework ===
-      // Swap a .rdfop-c element to a different mode
+      /*
+       * === RDFOP Component Framework ===
+       *
+       * ONLY these global helpers exist. Everything else belongs in
+       * EditorComponent templates (schema.ttl). Do NOT add per-component
+       * JS helper functions here — use rdfopSwap to load server-rendered
+       * component HTML instead.
+       *
+       * rdfopSwap(el, mode)  — replace .rdfop-c element via AJAX
+       * rdfopCommit(btn)     — save data-rdfop-old/new diff, then swap to view
+       * rdfopCreate(btn,p,t) — create child node, then re-render parent
+       */
+
       window.rdfopSwap = async function(el, mode) {
-        const id = el.dataset.rdfopId;
-        if (!id) { console.error('rdfopSwap: missing data-rdfop-id'); return; }
+        var id = el.dataset.rdfopId;
+        if (!id) return;
         try {
-          const resp = await fetch('/rdfop-render?' + new URLSearchParams({id, mode}));
-          const html = await resp.text();
-          el.outerHTML = html;
-        } catch(e) { console.error('rdfopSwap failed', e); }
+          var resp = await fetch('/rdfop-render?' + new URLSearchParams({id: id, mode: mode}));
+          el.outerHTML = await resp.text();
+        } catch(e) { console.error('rdfopSwap', e); }
       };
-      // Convenience: edit/cancel buttons call these — no string args needed in onclick
-      window.rdfopEdit = function(btn) { rdfopSwap(btn.closest('.rdfop-c'), 'edit'); };
-      window.rdfopCancel = function(btn) { rdfopSwap(btn.closest('.rdfop-c'), 'view'); };
-      // Commit: collect textarea values, diff against data-rdfop-old, POST, then swap to view
+
       window.rdfopCommit = async function(btn) {
-        const el = btn.closest('.rdfop-c');
-        const id = el.dataset.rdfopId;
-        const prop = el.dataset.rdfopProp;
-        const oldVal = JSON.parse(el.dataset.rdfopOld || '""');
-        const textarea = el.querySelector('textarea');
-        if (!textarea || !id || !prop) return;
-        const newVal = textarea.value;
-        if (oldVal === newVal) { rdfopSwap(el, 'view'); return; }
-        const sid = id.includes(':') ? '<' + id + '>' : id;
-        const deleteTtl = sid + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .';
-        const insertTtl = sid + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .';
-        try {
+        var el = btn.closest('.rdfop-c');
+        var id = el.dataset.rdfopId, prop = el.dataset.rdfopProp;
+        var oldVal = JSON.parse(el.dataset.rdfopOld || '""');
+        var field = el.querySelector('textarea') || el.querySelector('input[type=text]');
+        if (!field || !id || !prop) return;
+        var newVal = field.value;
+        if (oldVal !== newVal) {
+          var sid = id.includes(':') ? '<' + id + '>' : id;
           await fetch('/rdfop-save', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'delete=' + encodeURIComponent(deleteTtl) + '&insert=' + encodeURIComponent(insertTtl)
+            body: 'delete=' + encodeURIComponent(sid + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .') +
+                  '&insert=' + encodeURIComponent(sid + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .')
           });
-        } catch(e) { console.error('rdfopCommit failed', e); return; }
+        }
         rdfopSwap(el, 'view');
       };
 
-      // === Tab helpers ===
-      window.rdfopTabSwitch = function(tab) {
-        const tabs = tab.closest('.rdfop-tabs');
-        if (!tabs) return;
-        const tabId = tab.dataset.tabId;
-        // Deactivate all tabs + panels
-        tabs.querySelectorAll('.rdfop-tabs__tab').forEach(t => t.classList.remove('rdfop-tabs__tab--active'));
-        tabs.querySelectorAll('.rdfop-tabs__panel').forEach(p => p.classList.remove('rdfop-tabs__panel--active'));
-        // Activate clicked
-        tab.classList.add('rdfop-tabs__tab--active');
-        const panel = tabs.querySelector('.rdfop-tabs__panel[data-tab-id="' + tabId + '"]');
-        if (panel) panel.classList.add('rdfop-tabs__panel--active');
-      };
-
-      // Add a new tab to a TabGroup
-      window.rdfopTabAdd = async function(btn) {
-        const tabs = btn.closest('.rdfop-tabs');
-        if (!tabs) return;
-        const parentId = tabs.dataset.rdfopId;
+      window.rdfopCreate = async function(btn, parentId, type) {
         try {
-          const resp = await fetch('/rdfop-create', {
+          var resp = await fetch('/rdfop-create', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'parent=' + encodeURIComponent(parentId) + '&type=' + encodeURIComponent('https://launix.de/rdfop/schema#Tab')
+            body: 'parent=' + encodeURIComponent(parentId) + '&type=' + encodeURIComponent(type)
           });
-          if (resp.ok) {
-            // Re-render the whole TabGroup
-            rdfopSwap(tabs, 'view');
-          }
-        } catch(e) { console.error('rdfopTabAdd failed', e); }
+          if (resp.ok) rdfopSwap(btn.closest('.rdfop-c'), 'view');
+        } catch(e) { console.error('rdfopCreate', e); }
       };
 
       // Auto-activate first tab on page load
-      document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.rdfop-tabs').forEach(tabs => {
-          const first = tabs.querySelector('.rdfop-tabs__tab');
-          if (first) rdfopTabSwitch(first);
-        });
-      });
-      // Also run immediately for server-rendered content
       setTimeout(function() {
-        document.querySelectorAll('.rdfop-tabs').forEach(tabs => {
-          const first = tabs.querySelector('.rdfop-tabs__tab');
-          if (first && !tabs.querySelector('.rdfop-tabs__tab--active')) rdfopTabSwitch(first);
+        document.querySelectorAll('.rdfop-tabs').forEach(function(tabs) {
+          if (!tabs.querySelector('.rdfop-tabs__tab--active')) {
+            var first = tabs.querySelector('.rdfop-tabs__tab');
+            if (first) rdfopTabSwitch(first);
+          }
         });
       }, 0);
 

@@ -78,7 +78,7 @@ PARAMETER ?id "id"
 SELECT ?h WHERE { ?id rdfop:html ?h }
 BEGIN
 ?><div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
-  <button class='rdfop-edit-btn' onclick='rdfopEdit(this)'>&#x270E;</button>
+  <button class='rdfop-edit-btn' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>&#x270E;</button>
   <?rdf PRINT RAW ?h ?>
 </div><?rdf
 END""" .
@@ -94,7 +94,7 @@ BEGIN
 ?><div class='rdfop-c rdfop-c--editing' data-rdfop-id='<?rdf PRINT HTML ?id ?>' data-rdfop-prop='https://launix.de/rdfop/schema#html' data-rdfop-old='<?rdf PRINT JSON ?h ?>'>
   <div class='rdfop-edit-toolbar'>
     <button onclick='rdfopCommit(this)'>&#x2714;</button>
-    <button onclick='rdfopCancel(this)'>&#x2718;</button>
+    <button onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'>&#x2718;</button>
   </div>
   <!-- TODO: TinyMCE -->
   <textarea class='rdfop-editor'><?rdf PRINT HTML ?h ?></textarea>
@@ -137,12 +137,12 @@ BEGIN
     <?rdf
     SELECT ?tab, ?label WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label }
     BEGIN
-    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' onclick='rdfopTabSwitch(this)'>
-      <span class='rdfop-tabs__label' ondblclick='rdfopTabRename(this)'><?rdf PRINT HTML ?label ?></span>
+    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' onclick='(function(t){var tabs=t.closest(&quot;.rdfop-tabs&quot;);tabs.querySelectorAll(&quot;.rdfop-tabs__tab&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__tab--active&quot;)});tabs.querySelectorAll(&quot;.rdfop-tabs__panel&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__panel--active&quot;)});t.classList.add(&quot;rdfop-tabs__tab--active&quot;);var p=tabs.querySelector(&quot;.rdfop-tabs__panel[data-tab-id=\x27&quot;+t.dataset.tabId+&quot;\x27]&quot;);if(p)p.classList.add(&quot;rdfop-tabs__panel--active&quot;)})(this)'>
+      <span class='rdfop-tabs__label'><?rdf PRINT HTML ?label ?></span>
     </div><?rdf
     END
     ?>
-    <button class='rdfop-tabs__add' onclick='rdfopTabAdd(this)'>+</button>
+    <button class='rdfop-tabs__add' onclick='rdfopCreate(this,&quot;<?rdf PRINT HTML ?id ?>&quot;,&quot;https://launix.de/rdfop/schema#Tab&quot;)'>+</button>
   </div>
   <div class='rdfop-tabs__content'>
     <?rdf
@@ -152,6 +152,7 @@ BEGIN
     END
     ?>
   </div>
-</div><?rdf
+</div>
+<script>(function(){var tabs=document.currentScript.previousElementSibling;var first=tabs.querySelector('.rdfop-tabs__tab');if(first)first.click()})()</script><?rdf
 END""" .
 

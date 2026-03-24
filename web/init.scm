@@ -275,8 +275,9 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (define resultrow (lambda (o) (_cnt "n" (+ (_cnt "n") 1))))
         (try (lambda () (eval (parse_sparql "rdf" (concat "SELECT ?c WHERE { ?c <https://launix.de/rdfop/schema#parent> " sparql_parent " }")))) (lambda (e) nil))
         (set order (+ (_cnt "n") 1))
-        /* insert the new node */
-        (set ttl (concat
+        /* build TTL via session to avoid scoping issues */
+        (set _t (newsession))
+        (_t "ttl" (concat
             "<" new_id "> a <" node_type "> .\n"
             "<" new_id "> <https://launix.de/rdfop/schema#parent> " sparql_parent " .\n"
             "<" new_id "> <https://launix.de/rdfop/schema#order> \"" order "\" .\n"
@@ -284,7 +285,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         /* type-specific defaults */
         (if (equal? node_type "https://launix.de/rdfop/schema#Tab") (begin
             (set child_id (concat "urn:uuid:" (uuid)))
-            (set ttl (concat ttl
+            (_t "ttl" (concat (_t "ttl")
                 "<" new_id "> <https://launix.de/rdfop/schema#tabLabel> \"New Tab\" .\n"
                 "<" new_id "> <https://launix.de/rdfop/schema#children> <" child_id "> .\n"
                 "<" child_id "> a <https://launix.de/rdfop/schema#HTMLView> .\n"
@@ -292,7 +293,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
                 "<" child_id "> <https://launix.de/rdfop/schema#html> \"<p>New tab content</p>\" .\n"
             ))
         ))
-        (try (lambda () (load_ttl "rdf" ttl)) (lambda (e) (begin ((res "status") 500) ((res "print") (concat "error: " e)))))
+        (try (lambda () (load_ttl "rdf" (_t "ttl"))) (lambda (e) (begin ((res "status") 500) ((res "print") (concat "error: " e)))))
         ((res "status") 200)
         ((res "print") new_id)
     ))
