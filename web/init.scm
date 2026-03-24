@@ -132,7 +132,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 /* render_component: render a specific EditorComponent by its IRI */
 (rdf_functions "render_component" (lambda (comp_iri req res) (begin
     (set print (res "print"))
-    (set sparql_comp (if (match comp_iri (regex ":" _) true false) (concat "<" comp_iri ">") comp_iri))
+    (set sparql_comp (if (match (concat comp_iri) (regex ":" _) true false) (concat "<" comp_iri ">") comp_iri))
     (set _rc (newsession))
     (try (lambda () (begin
         (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
@@ -150,7 +150,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (rdf_functions "render_object" (lambda (id req res) (begin
     (set print (res "print"))
     (set mode (coalesce (try (lambda () ((req "query") "mode")) (lambda (e) nil)) "view"))
-    (set sparql_id (if (match id (regex ":" _) true false) (concat "<" id ">") id))
+    (set sparql_id (if (match (concat id) (regex ":" _) true false) (concat "<" id ">") id))
     (set _rc (newsession))
 
     /* find component: ?type <mode_predicate> ?component where id a ?type */
@@ -278,7 +278,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         /* compute next order number: count existing children */
         (set _cnt (newsession))
         (_cnt "n" 0)
-        (set sparql_parent (if (match parent_id (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
+        (set sparql_parent (if (match (concat parent_id) (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
         (define resultrow (lambda (o) (_cnt "n" (+ (_cnt "n") 1))))
         (try (lambda () (eval (parse_sparql "rdf" (concat "SELECT ?c WHERE { ?c <https://launix.de/rdfop/schema#parent> " sparql_parent " }")))) (lambda (e) nil))
         (set order (+ (_cnt "n") 1))
