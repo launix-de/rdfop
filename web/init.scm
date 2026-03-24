@@ -91,51 +91,50 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 )))
 
-/* component renderer: dispatch by type and call registered view method */
+/* helper: render an RDFHP template string with ?id substituted */
+(define render_rdfhp_template (lambda (tpl id print) (begin
+    (set tpl2 (concat "\n" (replace tpl "?id" id)))
+    (define watchnil (lambda (fn cb) nil))
+    (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>")))))
+    (if (not (nil? formula)) (eval formula))
+)))
+
+/* component renderer: renders a component for a given subject + mode
+   mode defaults to "view" if not provided
+   RDFHP usage: CALL render_component("main", REQ, RES)
+              or CALL render_component("main", REQ, RES, "edit") */
 (rdf_functions "render_component" (lambda (id req res) (begin
     (set print (res "print"))
-    (set printed false)
-
-    /* Resolve all rdf types for id, then try view_<Type>(id, req, res) */
-    (set q (concat "SELECT ?t WHERE { " id " a ?t }"))
-    (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (begin (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil))))
+    (set mode (coalesce (try (lambda () ((req "query") "mode")) (lambda (e) nil)) "view"))
     (set _rc (newsession))
-    (define resultrow (lambda (o) (begin
-        (_rc "t" (o "?t"))
-        /* Prefer data-defined RDFHP template: t viewTemplate ?tpl */
-        (_rc "tpl" nil)
+
+    /* 1. Try EditorComponent with matching forTypes + componentName */
+    (try (lambda () (begin
+        (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
+        (eval (parse_sparql "rdf" (concat
+            "@prefix rdfop: <https://launix.de/rdfop/schema#> . "
+            "SELECT ?tpl WHERE { "
+            "?comp a rdfop:EditorComponent ; "
+            "rdfop:forTypes ?type ; "
+            "rdfop:componentName \"" mode "\" ; "
+            "rdfop:componentTemplate ?tpl . "
+            id " a ?type }"
+        )))
+    )) (lambda (e) nil))
+
+    /* 2. Fallback: viewTemplate on the EntityType (legacy, only for mode=view) */
+    (if (and (nil? (_rc "tpl")) (equal? mode "view"))
         (try (lambda () (begin
-            (set qtpl (concat "SELECT ?tpl WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"))
-            (define resultrow (lambda (o3) (_rc "tpl" (o3 "?tpl"))))
-            (define ftpl (parse_sparql "rdf" qtpl))
-            (eval ftpl)
+            (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
+            (eval (parse_sparql "rdf" (concat
+                "SELECT ?tpl WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewTemplate> ?tpl }"
+            )))
         )) (lambda (e) nil))
-        (if (not (nil? (_rc "tpl"))) (begin
-            (_rc "printed" true)
-            (set tpl2 (concat "\n" (replace (_rc "tpl") "?id" id)))
-            (define watchnil (lambda (fn cb) nil))
-            (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
-            (if (not (nil? formula)) (eval formula))
-        ) (begin
-            /* Try mapping via RDF: t viewFunction ?f */
-            (set fn (try (lambda () (begin
-                (set qmap (concat "SELECT ?f WHERE { " id " a ?t . ?t <https://launix.de/rdfop/schema#viewFunction> ?f }"))
-                (_rc "f" nil)
-                (define resultrow (lambda (o2) (_rc "f" (o2 "?f"))))
-                (define fm (parse_sparql "rdf" qmap))
-                (eval fm)
-                (if (nil? (_rc "f")) (concat "view_" (_rc "t")) (concat "view_" (_rc "f")))
-            )) (lambda (e) (concat "view_" (_rc "t")))))
-            (set handler (rdf_functions fn))
-            (if (nil? handler) nil (begin
-                (_rc "printed" true)
-                (handler id req res)
-            ))
-        ))
-    )))
-    (if (not (nil? formula)) (eval formula))
-    /* No legacy fallback: require schema-backed templates or view methods */
-    (if (not (_rc "printed"))
+    )
+
+    /* 3. Render the template */
+    (if (not (nil? (_rc "tpl")))
+        (render_rdfhp_template (_rc "tpl") id print)
         (print "<div class='empty'>Component not found or no view method.</div>")
     )
 )))
@@ -209,6 +208,50 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         )
         /* GET (or others): don’t show a status until user submits */
     )
+)))
+
+/* AJAX component render: GET /rdfop-render?id=main&mode=edit */
+(rdfop_routes "/rdfop-render" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/html")
+    ((res "status") 200)
+    ((rdf_functions "render_component") ((req "query") "id") req res)
+)))
+
+/* POST /rdfop-save — receives urlencoded s=subject&p=property&old=oldValue&new=newValue */
+(rdfop_routes "/rdfop-save" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/plain")
+    (set body_raw (try (lambda () ((req "body"))) (lambda (e) "")))
+    /* parse urlencoded body: split on &, then on =, urldecode with + → space */
+    (set bp (newsession))
+    (map (split body_raw "&") (lambda (pair) (begin
+        (set parts (split pair "="))
+        (set k (urldecode (replace (car parts) "+" " ")))
+        (set v (urldecode (replace (coalesce (car (cdr parts)) "") "+" " ")))
+        (bp k v)
+    )))
+    (set s (bp "s"))
+    (set p (bp "p"))
+    (set oldv (bp "old"))
+    (set newv (bp "new"))
+    (if (or (nil? s) (nil? p)) (begin
+        ((res "status") 400)
+        ((res "print") "missing s or p")
+    ) (begin
+        /* DELETE old triple via SQL */
+        (if (not (nil? oldv))
+            (try (lambda () (eval (parse_sql "rdf" (concat
+                "DELETE FROM rdf WHERE s = '" (replace s "'" "''")
+                "' AND p = '" (replace p "'" "''")
+                "' AND o = '" (replace oldv "'" "''") "'"
+            ) (lambda (schema table write) true)))) (lambda (e) nil))
+        )
+        /* INSERT new triple */
+        (if (not (nil? newv))
+            (try (lambda () (insert "rdf" "rdf" '("s" "p" "o") '((s p newv)) '() (lambda () true))) (lambda (e) nil))
+        )
+        ((res "status") 200)
+        ((res "print") "ok")
+    ))
 )))
 
 /* template scipt for subpage */

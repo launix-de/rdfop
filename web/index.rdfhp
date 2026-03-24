@@ -40,6 +40,15 @@
   .overlay-window { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel); border-radius: 12px; box-shadow: 0 16px 48px rgba(2,6,23,.3), 0 6px 16px rgba(2,6,23,.18); width: min(92vw, 980px); max-height: 86vh; overflow: auto; z-index: 2001; }
   .overlay-content { padding: 18px 20px; }
   .overlay-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; font-size: 20px; cursor: pointer; color: #334155; }
+  /* rdfop component framework */
+  .rdfop-c { position: relative; }
+  .rdfop-edit-btn { position: absolute; top: 8px; right: 12px; background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 16px; line-height: 1; z-index: 10; opacity: 0; transition: opacity .15s; }
+  .rdfop-c:hover > .rdfop-edit-btn { opacity: 1; }
+  .rdfop-edit-btn:hover { background: #f1f5f9; }
+  .rdfop-edit-toolbar { display: flex; gap: 6px; justify-content: flex-end; padding: 8px 12px 0; }
+  .rdfop-edit-toolbar button { background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 16px; }
+  .rdfop-edit-toolbar button:hover { background: #f1f5f9; }
+  .rdfop-editor { width: 100%; min-height: 30vh; font-family: monospace; font-size: 13px; border: 1px solid var(--ring); border-radius: 8px; padding: 10px; margin: 8px 12px; resize: vertical; box-sizing: border-box; }
 </style>
 </head><body>
   <div class="brand">RDFOP</div>
@@ -268,6 +277,42 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           f.text().then(txt => { ta.value = txt; });
         } catch(e) {}
         return false;
+      };
+
+      // === RDFOP Component Framework ===
+      // Swap a .rdfop-c element to a different mode
+      window.rdfopSwap = async function(el, mode) {
+        const id = el.dataset.rdfopId;
+        if (!id) { console.error('rdfopSwap: missing data-rdfop-id'); return; }
+        try {
+          const resp = await fetch('/rdfop-render?' + new URLSearchParams({id, mode}));
+          const html = await resp.text();
+          el.outerHTML = html;
+        } catch(e) { console.error('rdfopSwap failed', e); }
+      };
+      // Convenience: edit/cancel buttons call these — no string args needed in onclick
+      window.rdfopEdit = function(btn) { rdfopSwap(btn.closest('.rdfop-c'), 'edit'); };
+      window.rdfopCancel = function(btn) { rdfopSwap(btn.closest('.rdfop-c'), 'view'); };
+      // Commit: collect textarea values, diff against data-rdfop-old, POST, then swap to view
+      window.rdfopCommit = async function(btn) {
+        const el = btn.closest('.rdfop-c');
+        const id = el.dataset.rdfopId;
+        const prop = el.dataset.rdfopProp;
+        const oldVal = el.dataset.rdfopOld || '';
+        const textarea = el.querySelector('textarea');
+        if (!textarea || !id || !prop) return;
+        const newVal = textarea.value;
+        if (oldVal === newVal) { rdfopSwap(el, 'view'); return; }
+        const deleteTtl = id + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .';
+        const insertTtl = id + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .';
+        try {
+          await fetch('/rdfop-save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'delete=' + encodeURIComponent(deleteTtl) + '&insert=' + encodeURIComponent(insertTtl)
+          });
+        } catch(e) { console.error('rdfopCommit failed', e); return; }
+        rdfopSwap(el, 'view');
       };
 
       // Intercept menu clicks

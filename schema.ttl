@@ -34,10 +34,11 @@ rdfop:recursiveDelete a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range
 
 # Editor components
 rdfop:forTypes a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfop:EntityType .
-rdfop:parameters a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # specify the parameters that have to be set to instanciate this component
-rdfop:input a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFJSON query (can use the parameters) to fetch the `data` object
-rdfop:inputVariable a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # bind JSON to this object? (for nested templates that should be able to access their parents data)
-rdfop:template a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFHP query (can use the parameters) to render the vue.js template
+rdfop:componentName a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # "view", "edit", "view-short", etc.
+rdfop:componentTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFHP template string
+rdfop:parameters a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # parameters required to instantiate
+rdfop:input a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFJSON query for data + provenance
+rdfop:inputVariable a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # bind JSON to this variable name
 rdfop:initTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # JSON object for new items
 
 # Code Generators
@@ -68,7 +69,37 @@ rdfop:HTMLView a rdfop:EntityType .
 # Attribute for HTMLView content
 rdfop:html a rdf:Property ; rdfs:domain rdfop:HTMLView ; rdfs:range rdfs:Literal .
 
-# Map HTMLView to the RDFHP template used by the renderer
+# HTMLView: "view" component — shows content with edit pencil
+rdfop:HTMLView_view a rdfop:EditorComponent ;
+  rdfop:forTypes rdfop:HTMLView ;
+  rdfop:componentName "view" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+SELECT ?h WHERE { ?id rdfop:html ?h }
+BEGIN
+?><div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
+  <button class='rdfop-edit-btn' onclick='rdfopEdit(this)'>&#x270E;</button>
+  <?rdf PRINT RAW ?h ?>
+</div><?rdf
+END""" .
+
+# HTMLView: "edit" component — textarea with save/cancel
+rdfop:HTMLView_edit a rdfop:EditorComponent ;
+  rdfop:forTypes rdfop:HTMLView ;
+  rdfop:componentName "edit" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+SELECT ?h WHERE { ?id rdfop:html ?h }
+BEGIN
+?><div class='rdfop-c rdfop-c--editing' data-rdfop-id='<?rdf PRINT HTML ?id ?>' data-rdfop-prop='https://launix.de/rdfop/schema#html' data-rdfop-old='<?rdf PRINT HTML ?h ?>'>
+  <div class='rdfop-edit-toolbar'>
+    <button onclick='rdfopCommit(this)'>&#x2714;</button>
+    <button onclick='rdfopCancel(this)'>&#x2718;</button>
+  </div>
+  <!-- TODO: TinyMCE -->
+  <textarea class='rdfop-editor'><?rdf PRINT HTML ?h ?></textarea>
+</div><?rdf
+END""" .
+
+# Legacy fallback for render_component (server-side RDFHP without edit)
 rdfop:HTMLView rdfop:viewTemplate "@PREFIX rdfop: <https://launix.de/rdfop/schema#> . SELECT ?h WHERE { ?id rdfop:html ?h } BEGIN PRINT RAW ?h END" .
 
 ################################################################

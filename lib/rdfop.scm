@@ -27,7 +27,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 		/* check for password */
 		((res "header") "Content-Type" "text/html")
 		((res "status") 200)
-		(print "RDFOP query: " req)
+		/*(print "RDFOP query: " req)*/
 
 		(define print (res "print"))
 
