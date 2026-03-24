@@ -29,18 +29,26 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (createdatabase "rdf" true)
 (createtable "rdf" "rdf" '('("column" "s" "text" '() '()) '("column" "p" "text" '() '()) '("column" "o" "text" '() '()) '("unique" "u" '("s" "p" "o"))) '() true)
 
-/* simple loader */
-/* intentionally no robustness here; memcp/load_ttl should handle multi-statements */
+/* schema.ttl: watch + hot-reload (delete old triples, insert new) */
+(set _schema_old (newsession))
+(watch "../schema.ttl" (lambda (content) (begin
+    (set old (_schema_old "ttl"))
+    (if (not (nil? old))
+        (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "schema delete error: " e)))
+    )
+    (try (lambda () (begin (load_ttl "rdf" content) (_schema_old "ttl" content) (print "schema.ttl reloaded")))
+         (lambda (e) (print "schema.ttl load error: " e)))
+)))
 
-/* load base schema + example data (from project root) */
-(try (lambda () (load_ttl "rdf" (load "../schema.ttl"))) (lambda (e)
-    (print "schema.ttl load from ../ failed: " e)
-    (try (lambda () (load_ttl "rdf" (load "schema.ttl"))) (lambda (e2) (print "schema.ttl load failed: " e2)))
-))
-(try (lambda () (load_ttl "rdf" (load "../example.ttl"))) (lambda (e)
-    (print "example.ttl load from ../ failed: " e)
-    (try (lambda () (load_ttl "rdf" (load "example.ttl"))) (lambda (e2) (print "example.ttl load failed: " e2)))
-))
+/* example.ttl: only load if database is empty (no user data yet) */
+(set _has_data (newsession))
+(define resultrow (lambda (o) (_has_data "found" true)))
+(eval (parse_sparql "rdf" "SELECT ?t WHERE { main a ?t }"))
+(if (nil? (_has_data "found"))
+    (try (lambda () (begin (load_ttl "rdf" (load "../example.ttl")) (print "example.ttl loaded (fresh db)")))
+         (lambda (e) (try (lambda () (begin (load_ttl "rdf" (load "example.ttl")) (print "example.ttl loaded (fresh db)"))) (lambda (e2) nil))))
+    (print "example.ttl skipped (database has data)")
+)
 
 /* custom function for query execution */
 (rdf_functions "execute_rdf" (lambda (req res) (begin
