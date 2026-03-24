@@ -217,11 +217,11 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     ((rdf_functions "render_component") ((req "query") "id") req res)
 )))
 
-/* POST /rdfop-save — receives urlencoded s=subject&p=property&old=oldValue&new=newValue */
+/* POST /rdfop-save — receives urlencoded delete=TTL&insert=TTL */
 (rdfop_routes "/rdfop-save" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/plain")
     (set body_raw (try (lambda () ((req "body"))) (lambda (e) "")))
-    /* parse urlencoded body: split on &, then on =, urldecode with + → space */
+    /* parse urlencoded body */
     (set bp (newsession))
     (map (split body_raw "&") (lambda (pair) (begin
         (set parts (split pair "="))
@@ -229,29 +229,18 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (set v (urldecode (replace (coalesce (car (cdr parts)) "") "+" " ")))
         (bp k v)
     )))
-    (set s (bp "s"))
-    (set p (bp "p"))
-    (set oldv (bp "old"))
-    (set newv (bp "new"))
-    (if (or (nil? s) (nil? p)) (begin
-        ((res "status") 400)
-        ((res "print") "missing s or p")
-    ) (begin
-        /* DELETE old triple via SQL */
-        (if (not (nil? oldv))
-            (try (lambda () (eval (parse_sql "rdf" (concat
-                "DELETE FROM rdf WHERE s = '" (replace s "'" "''")
-                "' AND p = '" (replace p "'" "''")
-                "' AND o = '" (replace oldv "'" "''") "'"
-            ) (lambda (schema table write) true)))) (lambda (e) nil))
-        )
-        /* INSERT new triple */
-        (if (not (nil? newv))
-            (try (lambda () (insert "rdf" "rdf" '("s" "p" "o") '((s p newv)) '() (lambda () true))) (lambda (e) nil))
-        )
-        ((res "status") 200)
-        ((res "print") "ok")
-    ))
+    (set del_ttl (bp "delete"))
+    (set ins_ttl (bp "insert"))
+    /* DELETE triples */
+    (if (and (not (nil? del_ttl)) (not (equal? del_ttl "")))
+        (try (lambda () (delete_ttl "rdf" del_ttl)) (lambda (e) (print "delete_ttl error: " e)))
+    )
+    /* INSERT triples */
+    (if (and (not (nil? ins_ttl)) (not (equal? ins_ttl "")))
+        (try (lambda () (load_ttl "rdf" ins_ttl)) (lambda (e) (print "load_ttl error: " e)))
+    )
+    ((res "status") 200)
+    ((res "print") "ok")
 )))
 
 /* template scipt for subpage */
