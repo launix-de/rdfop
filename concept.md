@@ -11,21 +11,41 @@ The layout is a tree of **layout nodes**. Each node is one of:
 - **Split** — divides its area into two panes (horizontal or vertical) with a draggable separator
 - **TabGroup** — shows multiple children as tabs with a tab bar (top/bottom/left/right)
 - **HTMLView** — a leaf node displaying editable HTML content
-- **ComponentSelector** — a leaf node that lets the user pick a component type from a palette, then displays it
+- **ComponentSelector** — a placeholder that lets the user pick a component type from a palette, then displays it
 
-Non-leaf nodes (Split, TabGroup) spawn **ComponentSelector** nodes as placeholders for their children. The user then picks a concrete component type from the palette. Once selected, the ComponentSelector stores the choice and renders the chosen component in its full area. A small [x] button allows removing the selection and returning to the palette.
+Non-leaf nodes (Split, TabGroup) use **ComponentSelector** nodes as placeholders for their children. The user picks a concrete type from the palette; the ComponentSelector stores the choice and renders it full-area. A small [x] button removes the selection and returns to the palette.
+
+---
 
 ## Tree Structure
 
-rdfop:parent -> store the parent of each node! (or leave if its the root node)
-rdfop:children -> multiple-assignable ids of child nodes
-rdfop:order -> order number for ordering of tabs/splits
+Every node has:
+- `rdfop:parent` — IRI of the parent node (absent for root)
+- `rdfop:order` — numeric ordering among siblings (for tabs, split panes)
+
+Parent nodes reference children via:
+- `rdfop:children` — multi-valued, one triple per child IRI
+
+Children are ordered by their `rdfop:order` value.
 
 ---
 
 ## Node Creation
-Every node type must have a constructor ttl with some default values. the node ID is (if unknown) a new uuid (scm function uuid already available)
-new builtin create_component(parent_id, type, parameters...) as incomplete example creates a new component with fresh uuid, rdfop:parent, and type and calls the type-specific constructor for the default values
+
+Every node type has a **constructor** (`rdfop:initTemplate`) that produces default TTL triples. The framework provides:
+
+```scheme
+(create_component parent_id type)
+```
+
+This:
+1. Generates a fresh `urn:uuid:...` for the new node
+2. Inserts `<uuid> a <type> . <uuid> rdfop:parent <parent_id> .`
+3. Inserts `<parent_id> rdfop:children <uuid> .`
+4. Executes the type's `rdfop:initTemplate` to create default children/values
+5. Returns the new node IRI
+
+---
 
 ## Node Types
 
@@ -34,16 +54,14 @@ new builtin create_component(parent_id, type, parameters...) as incomplete examp
 The central building block. Every slot that "could be anything" starts as a ComponentSelector.
 
 **RDF properties:**
-- `rdfop:selectedType` — IRI of the selected EntityType (nil/not set = show palette)
-- `rdfop:selectedNode` — IRI of the child node that was created (nil = show palette)
+- `rdfop:selectedType` — IRI of the selected EntityType (absent = show palette)
+- `rdfop:selectedNode` — IRI of the child node (absent = show palette)
 
 **Behavior:**
-1. If `selectedNode` is nil → render the **palette**: a grid/list of available component types tagged with `rdfop:paletteVisible true`. Clicking one creates a new node of that type (with `uuid` IRI), stores it in `selectedNode`, and renders it.
-2. If `selectedNode` is set → render the selected component via `render_component(selectedNode, "view")`. Show a small [x] button (top-right, hover-reveal) that clears `selectedNode` and `selectedType`, returning to the palette.
+1. If `selectedNode` is absent → render the **palette**: a grid of available component types tagged with `rdfop:paletteVisible true`. Clicking one calls `create_component` and stores the result in `selectedNode`.
+2. If `selectedNode` is set → render the selected component via `render_component(selectedNode, "view")`. Show a small [x] button (hover-reveal) that clears `selectedNode` and `selectedType`, deletes the child subtree, and returns to the palette.
 
 **Palette filtering:**
-Only EntityTypes with `rdfop:paletteVisible true` appear in the palette. This allows controlling which types are user-instantiable.
-
 ```ttl
 rdfop:Split rdfop:paletteVisible true .
 rdfop:TabGroup rdfop:paletteVisible true .
@@ -56,146 +74,99 @@ Divides its area into two panes separated by a draggable divider.
 
 **RDF properties:**
 - `rdfop:splitDirection` — `"horizontal"` (left/right) or `"vertical"` (top/bottom). Default: `"horizontal"`.
-- `rdfop:splitRatio` — float between 0.0 and 1.0. Default: `0.64` golden ratio. Persisted on drag end.
-- `rdfop:children` — IRI of the left/top child node (default: a fresh ComponentSelector rdfop:order=1)
-- `rdfop:children` — IRI of the right/bottom child node (default: a fresh ComponentSelector rdfop:order=2)
+- `rdfop:splitRatio` — float between 0.0 and 1.0. Default: `0.64` (golden ratio). Persisted on drag end.
+- Two `rdfop:children` — left/top child (`rdfop:order` 1) and right/bottom child (`rdfop:order` 2). Both default to fresh ComponentSelectors.
 
-**Initialization:**
-When a Split is created, two ComponentSelector children are automatically created (blank nodes → `urn:uuid:...`) and linked via `splitLeft` / `splitRight`.
-
-**View template structure:**
-```html
-<div class="rdfop-c rdfop-split rdfop-split--horizontal"
-     data-rdfop-id="..." data-rdfop-ratio="0.5"
-     style="display:flex; flex-direction:row;">
-  <div class="rdfop-split__pane" style="flex: 0.5;">
-    <!-- render_component(splitLeft, "view") -->
-  </div>
-  <div class="rdfop-split__separator" draggable></div>
-  <div class="rdfop-split__pane" style="flex: 0.5;">
-    <!-- render_component(splitRight, "view") -->
-  </div>
-</div>
+**View template (RDFHP):**
+```rdfhp
+@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+SELECT ?dir, ?ratio WHERE { $ID rdfop:splitDirection ?dir . $ID rdfop:splitRatio ?ratio }
+BEGIN
+?><div class='rdfop-c rdfop-split rdfop-split--<?rdf PRINT HTML ?dir ?>'
+     data-rdfop-id='<?rdf PRINT HTML $RAWID ?>' data-rdfop-ratio='<?rdf PRINT HTML ?ratio ?>'
+     style='display:flex; flex-direction:<?rdf PRINT HTML ?dir === "horizontal" ? "row" : "column" ?>'>
+  <?rdf
+  SELECT ?child WHERE { ?child rdfop:parent $ID } BEGIN
+  ?><div class='rdfop-split__pane'><?rdf
+    CALL render_component(?child, REQ, RES)
+  ?></div><?rdf
+  END
+  ?>
+  <div class='rdfop-split__separator'></div>
+</div><?rdf
+END
 ```
+
+Note: The actual flex sizing and separator insertion use JS to apply the ratio from `data-rdfop-ratio`.
 
 **Separator drag:**
 - `mousedown` on separator starts tracking
-- `mousemove` updates the flex ratios live (CSS only, no server call)
-- `mouseup` persists the new ratio via `/rdfop-save` (DELETE old ratio + INSERT new ratio)
+- `mousemove` updates flex ratios live (CSS only, no server call)
+- `mouseup` persists via `/rdfop-save` (DELETE old ratio + INSERT new ratio using `rdf_quote`)
 
-**No edit mode needed.** The split is always interactive. Direction and ratio could be changed via a small settings popover if needed later.
+**No edit mode needed.** The split is always interactive.
 
 ### TabGroup
 
 Shows N children as tabs with a tab bar. New tabs can be added; tab headers can be renamed.
 
 **RDF properties:**
-- `rdfop:tabDirection` — `"top"` (default), `"bottom"`, `"left"`, `"right", "leftRotated", "rightRotated"`. Controls where the tab bar is placed.
-- `rdfop:children` — IDs of the children (ordered by their attribute rdfop:order)
+- `rdfop:tabDirection` — `"top"` (default), `"bottom"`, `"left"`, `"right"`, `"leftRotated"`, `"rightRotated"`.
 
-Each **tab** is a node of type `rdfop:Tab`:
+Each child is a `rdfop:Tab` node with:
 - `rdfop:tabLabel` — display name (editable, default: "New Tab")
-- `rdfop:tabContent` — IRI of the child node (a ComponentSelector)
-- `rdfop:order`
-- `rdfop:parent`
+- `rdfop:parent` — points to the TabGroup
+- `rdfop:order` — numeric position
+- `rdfop:children` — one child, typically a ComponentSelector
 
-**View template structure:**
-```html
-<div class="rdfop-c rdfop-tabs rdfop-tabs--top" data-rdfop-id="...">
-  <div class="rdfop-tabs__bar">
-    <div class="rdfop-tabs__tab rdfop-tabs__tab--active"
-         data-tab-id="urn:uuid:...">
-      <span class="rdfop-tabs__label" ondblclick="rdfopTabRename(this)">Tab 1</span>
-      <button class="rdfop-tabs__close" onclick="rdfopTabRemove(this)">&#x2715;</button>
-    </div>
-    <div class="rdfop-tabs__tab" data-tab-id="urn:uuid:...">
-      <span class="rdfop-tabs__label" ondblclick="rdfopTabRename(this)">Tab 2</span>
-      <button class="rdfop-tabs__close" onclick="rdfopTabRemove(this)">&#x2715;</button>
-    </div>
-    <button class="rdfop-tabs__add" onclick="rdfopTabAdd(this)">+</button>
-  </div>
-  <div class="rdfop-tabs__content">
-    <!-- render_component(activeTab.tabContent, "view") -->
-  </div>
-</div>
-```
-
-done with a rdfhp subselect on the rdfop:children ORDER BY rdfop:order
-
-**Tab bar behavior:**
-- Clicking a tab switches the content area (client-side: hide/show, or server-side: re-render)
-- Double-clicking a tab label makes it editable (inline input, save on blur/enter)
-- The [x] on each tab removes it (DELETE tab triples + its ComponentSelector subtree)
-- The [+] button creates a new Tab with a fresh ComponentSelector child
-
-**Tab direction:**
-- `"top"` / `"bottom"`: horizontal tab bar, tabs are normal width
-- `"left"` / `"right"`: vertical sidebar, tab labels are NOT rotated and the sidebar is wider (~200px) to fit readable text
-- `"leftRotated"` / `"rightRotated"`: vertical sidebar, tab labels are rotated
-
-### HTMLView
-
-Already implemented. A leaf node that stores and renders HTML content. Has `"view"` and `"edit"` components.
-
----
-
-## Palette
-
-The palette is rendered by the ComponentSelector when no component is selected. It queries all EntityTypes that have `rdfop:paletteVisible true` and displays them as clickable cards.
-
-```rdfhp
-@prefix rdfop: <https://launix.de/rdfop/schema#> .
-SELECT ?type, ?label WHERE {
-  ?type rdfop:paletteVisible true .
-  OPTIONAL { ?type rdfs:label ?label }
-  BEGIN
-  PRINT etc.
-}
-```
-
-Each card shows the type label (or IRI as fallback). Clicking a card:
-1. Creates a new instance of that type (with `urn:uuid:...` IRI)
-2. If the type has an `rdfop:initTemplate`, executes it to create default child nodes (e.g., Split creates two ComponentSelectors)
-3. Stores the new node IRI in the ComponentSelector's `selectedNode`
-4. Re-renders the ComponentSelector area with the new component
-
----
-
-## Init Templates
-
-When a component is instantiated from the palette, its type's `rdfop:initTemplate` is executed to set up default data. This is an RDFHP template that produces TTL triples to insert.
-
-**incomplete Example: Split init template**
-Creates the Split node with default direction, ratio, and two ComponentSelector children:
+**View template (RDFHP):**
+The template queries children ordered by `rdfop:order`, renders a tab bar with labels + [x] buttons + [+] add button, and a content area that renders each tab's child. Tab switching is client-side JS (hide/show panels). The template uses nested SELECTs:
 
 ```rdfhp
 @PREFIX rdfop: <https://launix.de/rdfop/schema#> .
-?>
-?id a rdfop:Split ;
-  rdfop:splitDirection "horizontal" ;
-  rdfop:splitRatio "0.64" ;
-  rdfop:cildren <urn:uuid:<?rdf PRINT create_component(parent_id, type usw) ?>> ;
-  rdfop:children <urn:uuid:<?rdf PRINT create_component(parent_id, type usw) ?>> .
-<?rdf
+SELECT ?dir WHERE { $ID rdfop:tabDirection ?dir }
+BEGIN
+?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-id='<?rdf PRINT HTML $RAWID ?>'>
+  <div class='rdfop-tabs__bar'>
+    <?rdf
+    SELECT ?tab, ?label WHERE { ?tab rdfop:parent $ID . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label }
+    BEGIN
+    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' onclick='rdfopTabSwitch(this)'>
+      <span class='rdfop-tabs__label' ondblclick='rdfopTabRename(this)'><?rdf PRINT HTML ?label ?></span>
+      <button class='rdfop-tabs__close' onclick='rdfopTabRemove(this)'>&#x2715;</button>
+    </div><?rdf
+    END
+    ?>
+    <button class='rdfop-tabs__add' onclick='rdfopTabAdd(this)'>+</button>
+  </div>
+  <div class='rdfop-tabs__content'>
+    <?rdf
+    SELECT ?tab, ?child WHERE { ?tab rdfop:parent $ID . ?tab a rdfop:Tab . ?tab rdfop:children ?child }
+    BEGIN
+    ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>'>
+      <?rdf CALL render_component(?child, REQ, RES) ?>
+    </div><?rdf
+    END
+    ?>
+  </div>
+</div><?rdf
+END
 ```
 
-(The exact mechanism for init templates needs refinement — the UUIDs for children must be generated and used consistently within a single init.)
+**Tab bar behavior:**
+- Clicking a tab switches the content panel (client-side hide/show)
+- Double-clicking a tab label → inline input, save on blur/enter via `/rdfop-save`
+- [x] on a tab → removes the tab node + its subtree
+- [+] button → `create_component(tabGroupId, rdfop:Tab)`, creates a new Tab with a fresh ComponentSelector child
 
-**incomplete Example: TabGroup init template**
-Creates the TabGroup with one default tab containing a ComponentSelector:
+**Tab direction:**
+- `"top"` / `"bottom"`: horizontal tab bar
+- `"left"` / `"right"`: vertical sidebar (~200px), tab labels NOT rotated
+- `"leftRotated"` / `"rightRotated"`: vertical sidebar, tab labels rotated 90°
 
-```
-?id a rdfop:TabGroup ;
-  rdfop:tabDirection "top" .
+### HTMLView
 
-_:tab1 a rdfop:Tab ;
-  rdfop:tabLabel "Tab 1" ;
-  rdfop:tabContent _:sel1 .
-
-_:sel1 a rdfop:ComponentSelector .
-
-?id rdfop:order unix_timestamp .
-```
+Already implemented. A leaf node that stores and renders HTML content. Has `"view"` and `"edit"` EditorComponents.
 
 ---
 
@@ -204,110 +175,144 @@ _:sel1 a rdfop:ComponentSelector .
 A typical dashboard layout:
 
 ```
-main (ComponentSelector)
- └─ selectedNode → urn:uuid:split1 (Split, horizontal, 0.3)
-     ├─ splitLeft → urn:uuid:sel-left (ComponentSelector)
-     │   └─ selectedNode → urn:uuid:tabs1 (TabGroup, left)
-     │       ├─ Tab "Menu" → urn:uuid:sel-menu (ComponentSelector)
-     │       │   └─ selectedNode → urn:uuid:htmlview1 (HTMLView)
-     │       └─ Tab "Settings" → urn:uuid:sel-settings (ComponentSelector)
-     │           └─ (empty, shows palette)
-     └─ splitRight → urn:uuid:sel-right (ComponentSelector)
-         └─ selectedNode → urn:uuid:htmlview2 (HTMLView, "Hello World")
+main (TabGroup, top)
+ ├─ Tab "Dashboard" (order 1)
+ │   └─ (ComponentSelector)
+ │       └─ Split (horizontal, 0.3)
+ │           ├─ (ComponentSelector, order 1)
+ │           │   └─ HTMLView "<nav>Menu</nav>"
+ │           └─ (ComponentSelector, order 2)
+ │               └─ HTMLView "<h1>Hello World</h1>"
+ └─ Tab "Settings" (order 2)
+     └─ (ComponentSelector)
+         └─ (empty — shows palette)
 ```
 
 As RDF triples:
 ```ttl
-main a rdfop:ComponentSelector ;
-  rdfop:selectedNode <urn:uuid:split1> .
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
 
-<urn:uuid:split1> a rdfop:Split ;
+main a rdfop:TabGroup ;
+  rdfop:tabDirection "top" .
+
+_:tab1 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "Dashboard" ;
+  rdfop:order "1" ;
+  rdfop:children _:sel1 .
+
+_:sel1 a rdfop:ComponentSelector ;
+  rdfop:parent _:tab1 ;
+  rdfop:selectedNode _:split1 .
+
+_:split1 a rdfop:Split ;
+  rdfop:parent _:sel1 ;
   rdfop:splitDirection "horizontal" ;
   rdfop:splitRatio "0.3" ;
-  rdfop:splitLeft <urn:uuid:sel-left> ;
-  rdfop:splitRight <urn:uuid:sel-right> .
+  rdfop:children _:sel2 ;
+  rdfop:children _:sel3 .
 
-<urn:uuid:sel-left> a rdfop:ComponentSelector ;
-  rdfop:selectedNode <urn:uuid:tabs1> .
+_:sel2 a rdfop:ComponentSelector ;
+  rdfop:parent _:split1 ;
+  rdfop:order "1" ;
+  rdfop:selectedNode _:hw1 .
 
-<urn:uuid:tabs1> a rdfop:TabGroup ;
-  rdfop:tabDirection "left" ;
-  rdfop:tabOrder <urn:uuid:tab-menu> ;
-  rdfop:tabOrder <urn:uuid:tab-settings> .
+_:hw1 a rdfop:HTMLView ;
+  rdfop:parent _:sel2 ;
+  rdfop:html "<nav>Menu</nav>" .
 
-<urn:uuid:tab-menu> a rdfop:Tab ;
-  rdfop:tabLabel "Menu" ;
-  rdfop:tabContent <urn:uuid:sel-menu> .
+_:sel3 a rdfop:ComponentSelector ;
+  rdfop:parent _:split1 ;
+  rdfop:order "2" ;
+  rdfop:selectedNode _:hw2 .
 
-<urn:uuid:sel-menu> a rdfop:ComponentSelector ;
-  rdfop:selectedNode <urn:uuid:htmlview1> .
-
-<urn:uuid:htmlview1> a rdfop:HTMLView ;
-  rdfop:html "<nav><a href='#'>Home</a></nav>" .
-
-<urn:uuid:tab-settings> a rdfop:Tab ;
-  rdfop:tabLabel "Settings" ;
-  rdfop:tabContent <urn:uuid:sel-settings> .
-
-<urn:uuid:sel-settings> a rdfop:ComponentSelector .
-
-<urn:uuid:sel-right> a rdfop:ComponentSelector ;
-  rdfop:selectedNode <urn:uuid:htmlview2> .
-
-<urn:uuid:htmlview2> a rdfop:HTMLView ;
+_:hw2 a rdfop:HTMLView ;
+  rdfop:parent _:sel3 ;
   rdfop:html "<h1>Hello World</h1>" .
+
+_:tab2 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "Settings" ;
+  rdfop:order "2" ;
+  rdfop:children _:sel4 .
+
+_:sel4 a rdfop:ComponentSelector ;
+  rdfop:parent _:tab2 .
 ```
 
 ---
 
 ## Recursive Rendering
 
-`render_component(id, mode)` already supports recursive rendering via RDFHP's `CALL` statement. A Split's view template calls `render_component` for each child:
+`render_component(id, mode)` supports recursive rendering via RDFHP's `CALL` statement:
 
 ```rdfhp
-CALL render_component(?leftId, REQ, RES)
+CALL render_component(?child, REQ, RES)
 ```
 
-This naturally produces a nested tree of server-rendered HTML. The client-side `rdfopSwap` replaces individual subtrees without affecting siblings.
+This produces a nested tree of server-rendered HTML. The client-side `rdfopSwap` replaces individual subtrees without affecting siblings.
+
+**Template variable convention:**
+- `$ID` — replaced with the SPARQL-safe subject IRI (e.g., `<urn:uuid:...>` or `main`)
+- `$RAWID` — replaced with the raw IRI string (for HTML attributes, without angle brackets)
 
 ---
 
-## Persistence
+## Save-Back
 
-All layout state is stored as RDF triples:
-- Split ratios, directions
-- Tab labels, order, active tab
-- ComponentSelector selections
-- HTMLView content
+All mutations use `/rdfop-save` with `delete=TTL&insert=TTL`:
 
-Changes are saved via the existing `rdfopCommit` / `/rdfop-save` mechanism (DELETE old triple + INSERT new triple). The split separator drag and tab rename use the same endpoint.
+- **String values**: use `rdf_quote()` in Scheme or `JSON.stringify()` in JS to produce escaped TTL string literals
+- **Split ratio drag**: `delete=<id> <rdfop:splitRatio> "0.5" .` + `insert=<id> <rdfop:splitRatio> "0.3" .`
+- **Tab rename**: `delete=<tabId> <rdfop:tabLabel> "Old" .` + `insert=<tabId> <rdfop:tabLabel> "New" .`
+- **ComponentSelector selection**: `insert=<selectorId> <rdfop:selectedNode> <newChildId> .`
+
+`delete_ttl` parses the TTL and deletes matching triples via `scan` + `$update`. `load_ttl` inserts new triples.
 
 ---
 
 ## CSS Layout
 
-- **Split horizontal**: `display:flex; flex-direction:row;` with panes sized via `flex` property from ratio
+- **Split horizontal**: `display:flex; flex-direction:row;` with panes sized via `flex` from ratio
 - **Split vertical**: `display:flex; flex-direction:column;`
-- **Split separator**: 4px wide/tall, `cursor:col-resize` or `cursor:row-resize`, background on hover
-- **TabGroup top/bottom**: tab bar is `display:flex; flex-direction:row;`, content fills remaining space
-- **TabGroup left/right**: `display:flex; flex-direction:row;` (or `row-reverse`), tab bar is a vertical sidebar (~200px), tabs stacked vertically
-- **All layout nodes**: `width:100%; height:100%;` to fill their parent container. The root `main` fills the board area.
+- **Split separator**: 4px wide/tall, `cursor:col-resize` or `cursor:row-resize`, highlight on hover
+- **TabGroup top/bottom**: `display:flex; flex-direction:column;` (or `column-reverse`), tab bar horizontal
+- **TabGroup left/right**: `display:flex; flex-direction:row;` (or `row-reverse`), tab bar vertical (~200px)
+- **TabGroup leftRotated/rightRotated**: same but `writing-mode:vertical-lr` on tab labels
+- **All layout nodes**: `width:100%; height:100%;` to fill parent. Root `main` fills the board area.
+
+---
+
+## JS Helpers
+
+| Function | Description |
+|----------|-------------|
+| `rdfopSwap(el, mode)` | Replace `.rdfop-c` element with a different component mode via AJAX |
+| `rdfopEdit(btn)` | Find nearest `.rdfop-c`, swap to `"edit"` |
+| `rdfopCancel(btn)` | Find nearest `.rdfop-c`, swap to `"view"` |
+| `rdfopCommit(btn)` | Save textarea changes via DELETE+INSERT, swap to `"view"` |
+| `rdfopTabSwitch(tab)` | Client-side tab switching (show/hide panels) |
+| `rdfopTabRename(span)` | Inline-edit tab label (dblclick → input → save on blur) |
+| `rdfopTabAdd(btn)` | Create new Tab with ComponentSelector child |
+| `rdfopTabRemove(btn)` | Remove tab + subtree |
+| `rdfopSplitDrag(sep)` | Start separator drag, persist ratio on mouseup |
 
 ---
 
 ## Implementation Order
 
-1. **ComponentSelector** — palette + selection + [x] remove (the foundation for everything)
-2. **HTMLView in palette** — tag HTMLView as `paletteVisible`, verify ComponentSelector → HTMLView flow
-3. **Split** — horizontal/vertical split with draggable separator, ratio persistence
-4. **TabGroup** — tab bar, add/remove/rename tabs, tab direction
-5. **Init templates** — auto-create children when instantiating Split/TabGroup from palette
-6. **Main as ComponentSelector** — change `example.ttl` so `main` is a ComponentSelector (instead of HTMLView directly), enabling the user to build their own dashboard from scratch
+1. **Fix RDFHP parsing** — `$ID` with `<urn:uuid:...>` in templates (currently broken after init.scm loads)
+2. **TabGroup rendering** — get the existing TabGroup view template working with recursive child rendering
+3. **Tab interactions** — switch, rename, add, remove tabs
+4. **Split** — horizontal/vertical split with draggable separator
+5. **ComponentSelector** — palette + selection + [x] remove
+6. **Init templates** — `create_component` with type-specific defaults
+7. **Main as ComponentSelector** — user builds own dashboard from scratch
 
 ---
 
 ## Answered Questions
 
-- **Drag and drop**: users must be able to drag tabs between TabGroups, or drag panes to rearrange splits.
-- **Undo**: The DELETE+INSERT mechanism is naturally reversible. A transaction log could support undo. -> "a rdfop:undo" nodes with rdfop:insert, rdfop:delete, rdfop:date (later: rdfop:user)
-- **Cleanup**: When a ComponentSelector is cleared or a Tab is removed, the orphaned subtree should be cleaned up. `rdfop:deleteCode` rules handle this (defined per type).
+- **Drag and drop**: users must be able to drag tabs between TabGroups and rearrange split panes (future enhancement).
+- **Undo**: DELETE+INSERT is naturally reversible. Transaction log via `rdfop:UndoEntry` nodes with `rdfop:insertTtl`, `rdfop:deleteTtl`, `rdfop:timestamp` (later: `rdfop:user`).
+- **Cleanup**: When a ComponentSelector is cleared or a Tab removed, orphaned subtrees are cleaned up via `rdfop:deleteCode` rules per type.

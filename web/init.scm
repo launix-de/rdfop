@@ -102,11 +102,13 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 /* helper: render an RDFHP template string with ?id substituted */
 (define render_rdfhp_template (lambda (tpl id req res) (begin
     (set print (res "print"))
-    /* use <urn:...> for SPARQL if id contains : */
-    (set sparql_id (if (match id (regex ":" _) true false) (concat "<" id ">") id))
-    (set tpl2 (concat "\n" (replace (replace tpl "$RAWID" id) "$ID" sparql_id)))
+    /* For IRIs with :, inject a dynamic prefix _s_ so SPARQL avoids <> syntax */
+    (if (match id (regex ":" _) true false)
+        (set tpl2 (concat "\n@PREFIX _s_: <" id "> .\n" (replace (replace tpl "$RAWID" id) "$ID" "_s_:")))
+        (set tpl2 (concat "\n" (replace (replace tpl "$RAWID" id) "$ID" id)))
+    )
     (define watchnil (lambda (fn cb) nil))
-    (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>")))))
+    (define formula (try (lambda () (parse_rdfhp "rdf" tpl2 watchnil)) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b><pre>" (htmlentities (substr tpl2 0 300)) "</pre></div>")))))
     (if (not (nil? formula)) (eval formula))
 )))
 
