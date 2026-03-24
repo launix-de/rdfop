@@ -323,8 +323,9 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         if (!textarea || !id || !prop) return;
         const newVal = textarea.value;
         if (oldVal === newVal) { rdfopSwap(el, 'view'); return; }
-        const deleteTtl = id + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .';
-        const insertTtl = id + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .';
+        const sid = id.includes(':') ? '<' + id + '>' : id;
+        const deleteTtl = sid + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .';
+        const insertTtl = sid + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .';
         try {
           await fetch('/rdfop-save', {
             method: 'POST',
