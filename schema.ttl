@@ -154,7 +154,7 @@ rdfop:TabGroup_view a rdfop:EditorComponent ;
 PARAMETER ?id "id"
 SELECT ?dir WHERE { ?id rdfop:tabDirection ?dir }
 BEGIN
-?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
+?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <div class='rdfop-tabs__bar'>
     <?rdf
     SELECT ?tab, ?label WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label }
