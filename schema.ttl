@@ -351,12 +351,15 @@ rdfop:ComponentSelector_view a rdfop:EditorComponent ;
 .rdfop-selector--filled:hover > .rdfop-selector__move, .rdfop-selector--filled:hover > .rdfop-selector__clear { opacity: 1; }
 .rdfop-selector__clear:hover { color: #ef4444; border-color: #ef4444; }
 .rdfop-selector__move:hover { color: #0ea5e9; border-color: #0ea5e9; }
-.rdfop-palette--drop-target { outline: 3px solid #0ea5e9; filter: brightness(0.92) sepia(0.3) hue-rotate(170deg) saturate(2); }
-.rdfop-selector--drop-center { outline: 3px solid #0ea5e9; filter: brightness(0.92) sepia(0.3) hue-rotate(170deg) saturate(2); }
-.rdfop-selector--drop-left { box-shadow: inset 4px 0 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }
-.rdfop-selector--drop-right { box-shadow: inset -4px 0 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }
-.rdfop-selector--drop-top { box-shadow: inset 0 4px 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }
-.rdfop-selector--drop-bottom { box-shadow: inset 0 -4px 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }""" ;
+.rdfop-palette--drop-target { outline: 3px solid #0ea5e9; }
+.rdfop-palette--drop-target::before, [class*='rdfop-selector--drop-']::before { content: ''; position: absolute; pointer-events: none; z-index: 5; }
+.rdfop-selector--drop-center { outline: 3px solid #0ea5e9; }
+.rdfop-selector--drop-center::before { inset: 0; background: rgba(14,165,233,.2); }
+.rdfop-palette--drop-target::before { inset: 0; background: rgba(14,165,233,.2); }
+.rdfop-selector--drop-left::before { top: 0; left: 0; bottom: 0; width: 34%; background: rgba(14,165,233,.25); border-right: 3px solid #0ea5e9; }
+.rdfop-selector--drop-right::before { top: 0; right: 0; bottom: 0; width: 34%; background: rgba(14,165,233,.25); border-left: 3px solid #0ea5e9; }
+.rdfop-selector--drop-top::before { top: 0; left: 0; right: 0; height: 34%; background: rgba(14,165,233,.25); border-bottom: 3px solid #0ea5e9; }
+.rdfop-selector--drop-bottom::before { bottom: 0; left: 0; right: 0; height: 34%; background: rgba(14,165,233,.25); border-top: 3px solid #0ea5e9; }""" ;
   rdfop:js """
 window.rdfopPaletteSelect = async function(btn, selectorId, typeName) {
   var resp = await fetch('/rdfop-create', {
@@ -450,6 +453,9 @@ window.rdfopMoveOver = function(e, el) {
   e.preventDefault(); e.stopPropagation();
   e.dataTransfer.dropEffect = 'move';
   var target = el || e.currentTarget;
+  /* find the innermost drop target from the event target upward */
+  var inner = e.target.closest('.rdfop-selector--filled, .rdfop-palette');
+  if (inner && inner !== target && target.contains(inner)) { _clearDropClass(target); return; }
   if (target === _rdfopDragSource) return;
   _clearDropClass(target);
   if (target.classList.contains('rdfop-palette')) { target.classList.add('rdfop-palette--drop-target'); }
@@ -458,6 +464,9 @@ window.rdfopMoveOver = function(e, el) {
 window.rdfopMoveDrop = async function(e, el) {
   e.preventDefault(); e.stopPropagation();
   var target = el || e.currentTarget;
+  /* redirect to innermost target */
+  var inner = e.target.closest('.rdfop-selector--filled, .rdfop-palette');
+  if (inner && inner !== target && target.contains(inner)) target = inner;
   _clearDropClass(target);
   if (!_rdfopDragSource || target === _rdfopDragSource) return;
   var zone = target.classList.contains('rdfop-palette') ? 'center' : _dropZone(e, target);
@@ -505,10 +514,45 @@ window.rdfopMoveDrop = async function(e, el) {
     /* target selector now points to the split */
     ins += _sid(tgtP.id)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
     await rdfopSave(del, ins);
+    /* source is now empty — dissolve parent split if applicable */
+    await _dissolveSplit(srcP.id);
     rdfopSwap(srcEl, 'view');
     rdfopSwap(target, 'view');
   }
 };
+/* dissolve split when one side becomes empty after drag-out */
+window._dissolveSplit = async function(emptySelectorId) {
+  /* find if parent is a Split */
+  var qResp = await fetch('/rdf', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'rdf='+encodeURIComponent('SELECT ?split, ?splitParent WHERE { <'+emptySelectorId+'> <'+_S+'parent> ?split . ?split a <'+_S+'Split> . ?split <'+_S+'parent> ?splitParent }') });
+  var html = await qResp.text();
+  var doc = new DOMParser().parseFromString(html, 'text/html');
+  var rows = doc.querySelectorAll('tbody tr');
+  if (!rows.length) return; /* parent is not a Split */
+  var tds = rows[0].querySelectorAll('td');
+  var splitId = tds[0].textContent.trim();
+  var splitParentId = tds[1].textContent.trim();
+  /* find sibling selector */
+  var sibResp = await fetch('/rdf', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'rdf='+encodeURIComponent('SELECT ?sib, ?sibSel WHERE { ?sib <'+_S+'parent> <'+splitId+'> . FILTER(?sib != <'+emptySelectorId+'>) . ?sib <'+_S+'selectedNode> ?sibSel }') });
+  var sibHtml = await sibResp.text();
+  var sibDoc = new DOMParser().parseFromString(sibHtml, 'text/html');
+  var sibRows = sibDoc.querySelectorAll('tbody tr');
+  if (!sibRows.length) return; /* sibling also empty, leave as-is */
+  var sibTds = sibRows[0].querySelectorAll('td');
+  var sibSelContent = sibTds[1].textContent.trim();
+  /* replace: splitParent's selectedNode changes from split to sibling's content */
+  var del = '', ins = '';
+  del += _sid(splitParentId)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
+  ins += _sid(splitParentId)+' <'+_S+'selectedNode> <'+sibSelContent+'> .\n';
+  del += '<'+sibSelContent+'> <'+_S+'parent> '+_sid(sibTds[0].textContent.trim())+' .\n';
+  ins += '<'+sibSelContent+'> <'+_S+'parent> '+_sid(splitParentId)+' .\n';
+  await rdfopSave(del, ins);
+  /* delete the split and its children */
+  await fetch('/rdfop-delete', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'id='+encodeURIComponent(splitId) });
+  /* re-render the parent selector */
+  var parentEl = document.querySelector('[data-rdfop-params*=\'"id":"'+splitParentId+'"\']');
+  if (parentEl) rdfopSwap(parentEl, 'view');
+};
+
 /* auto-open tab on hover during drag */
 window.rdfopMoveTabHover = function(e) {
   var tab = e.currentTarget;
