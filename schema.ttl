@@ -380,9 +380,11 @@ rdfop:Split_view a rdfop:EditorComponent ;
 .rdfop-split--vertical { flex-direction: column; }
 .rdfop-split__pane { overflow: auto; flex: calc(1 - var(--ratio, 0.5)) 0 0%; }
 .rdfop-split__pane:first-child { flex: var(--ratio, 0.5) 0 0%; }
-.rdfop-split__separator { flex-shrink: 0; background: var(--ring); transition: background .15s; }
-.rdfop-split--horizontal > .rdfop-split__separator { width: 4px; cursor: col-resize; }
-.rdfop-split--vertical > .rdfop-split__separator { height: 4px; cursor: row-resize; }
+.rdfop-split__pane:nth-child(1) { order: 0; }
+.rdfop-split__separator { order: 1; background: var(--ring); transition: background .15s; }
+.rdfop-split__pane:nth-child(2) { order: 2; }
+.rdfop-split--horizontal > .rdfop-split__separator { flex: 0 0 4px; cursor: col-resize; }
+.rdfop-split--vertical > .rdfop-split__separator { flex: 0 0 4px; cursor: row-resize; }
 .rdfop-split__separator:hover, .rdfop-split__separator.dragging { background: #0ea5e9; }""" ;
   rdfop:js """
 window.rdfopSplitDrag = function(sep) {
@@ -507,7 +509,84 @@ window.rdfopTabInit = function(el) {
     }
   });
 };
-document.addEventListener('DOMContentLoaded', function(){ rdfopTabInit(document); });""" ;
+document.addEventListener('DOMContentLoaded', function(){ rdfopTabInit(document); });
+/* tab reorder via drag & drop */
+window.rdfopTabDragStart = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (!tab) return;
+  e.dataTransfer.setData('text/plain', tab.dataset.tabId);
+  tab.classList.add('rdfop-tabs__tab--dragging');
+};
+window.rdfopTabDragOver = function(e) {
+  e.preventDefault();
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (!tab) return;
+  tab.classList.remove('rdfop-tabs__tab--dragover-before', 'rdfop-tabs__tab--dragover-after');
+  var rect = tab.getBoundingClientRect();
+  var tabs = tab.closest('.rdfop-c');
+  var isVert = tabs && (tabs.classList.contains('rdfop-tabs--left') || tabs.classList.contains('rdfop-tabs--right') || tabs.classList.contains('rdfop-tabs--leftRotated') || tabs.classList.contains('rdfop-tabs--rightRotated'));
+  var mid = isVert ? (rect.top + rect.height/2) : (rect.left + rect.width/2);
+  var pos = isVert ? e.clientY : e.clientX;
+  tab.classList.add(pos > mid ? 'rdfop-tabs__tab--dragover-after' : 'rdfop-tabs__tab--dragover-before');
+};
+window.rdfopTabDragLeave = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (tab) tab.classList.remove('rdfop-tabs__tab--dragover-before', 'rdfop-tabs__tab--dragover-after');
+};
+window.rdfopTabDrop = async function(e) {
+  e.preventDefault();
+  var targetTab = e.target.closest('.rdfop-tabs__tab');
+  if (!targetTab) return;
+  targetTab.classList.remove('rdfop-tabs__tab--dragover');
+  var dragId = e.dataTransfer.getData('text/plain');
+  var dropId = targetTab.dataset.tabId;
+  if (dragId === dropId) return;
+  var tabs = targetTab.closest('.rdfop-c');
+  var allTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
+  /* determine before/after based on drop position within target */
+  var rect = targetTab.getBoundingClientRect();
+  var isVert = tabs.classList.contains('rdfop-tabs--left') || tabs.classList.contains('rdfop-tabs--right') || tabs.classList.contains('rdfop-tabs--leftRotated') || tabs.classList.contains('rdfop-tabs--rightRotated');
+  var mid = isVert ? (rect.top + rect.height/2) : (rect.left + rect.width/2);
+  var pos = isVert ? e.clientY : e.clientX;
+  var insertAfter = pos > mid;
+  var ids = allTabs.map(function(t){ return t.dataset.tabId; });
+  ids = ids.filter(function(id){ return id !== dragId; });
+  var dropIdx = ids.indexOf(dropId);
+  ids.splice(insertAfter ? dropIdx + 1 : dropIdx, 0, dragId);
+  /* save new orders as timestamps with 1-second gaps */
+  var base = Date.now();
+  for (var i = 0; i < ids.length; i++) {
+    var id = ids[i];
+    var sid = id.includes(':') ? '<'+id+'>' : id;
+    /* find old order from DOM data attribute */
+    var tabEl = allTabs.find(function(t){ return t.dataset.tabId === id; });
+    var oldOrd = tabEl ? tabEl.dataset.tabOrder : null;
+    var newOrd = String(base + i);
+    if (oldOrd) {
+      await rdfopSave(
+        sid+' <https://launix.de/rdfop/schema#order> '+JSON.stringify(oldOrd)+' .',
+        sid+' <https://launix.de/rdfop/schema#order> '+JSON.stringify(newOrd)+' .'
+      );
+    }
+  }
+  /* re-render */
+  var p = JSON.parse(tabs.dataset.rdfopParams || '{}');
+  p.mode = 'view';
+  var r = await fetch('/rdfop-render?' + new URLSearchParams(p));
+  var html = await r.text();
+  var tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  var node = tpl.content.firstElementChild;
+  tabs.replaceWith(node);
+  node.querySelectorAll('script').forEach(function(s){ eval(s.textContent); });
+  if (window.rdfopTabInit) rdfopTabInit(node);
+  /* activate the dragged tab */
+  setTimeout(function(){ var t = node.querySelector('.rdfop-tabs__tab[data-tab-id=\"'+dragId+'\"]'); if(t) t.click(); }, 0);
+};
+window.rdfopTabDragEnd = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (tab) tab.classList.remove('rdfop-tabs__tab--dragging');
+};""" ;
   rdfop:css """.rdfop-tabs { display: flex; width: 100%; height: 100%; }
 .rdfop-tabs--top, .rdfop-tabs--bottom { flex-direction: column; }
 .rdfop-tabs--left, .rdfop-tabs--leftRotated { flex-direction: row; }
@@ -522,6 +601,11 @@ document.addEventListener('DOMContentLoaded', function(){ rdfopTabInit(document)
 .rdfop-tabs__tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; user-select: none; display: flex; align-items: center; gap: 6px; }
 .rdfop-tabs__tab:hover { background: #e2e8f0; }
 .rdfop-tabs__tab--active { border-bottom-color: #0ea5e9; font-weight: 600; }
+.rdfop-tabs__tab--dragging { opacity: 0.4; }
+.rdfop-tabs__tab--dragover-before { box-shadow: -2px 0 0 0 #0ea5e9 inset; }
+.rdfop-tabs__tab--dragover-after { box-shadow: 2px 0 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left .rdfop-tabs__tab--dragover-before, .rdfop-tabs--right .rdfop-tabs__tab--dragover-before, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-before, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-before { box-shadow: 0 -2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left .rdfop-tabs__tab--dragover-after, .rdfop-tabs--right .rdfop-tabs__tab--dragover-after, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-after, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-after { box-shadow: 0 2px 0 0 #0ea5e9 inset; }
 .rdfop-tabs__close { display: none; background: none; border: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 0 2px; line-height: 1; }
 .rdfop-tabs__tab:hover .rdfop-tabs__close { display: inline; }
 .rdfop-tabs__close:hover { color: #ef4444; }
@@ -539,7 +623,7 @@ BEGIN
     <?rdf
     SELECT ?tab, ?label, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label } ORDER BY ?ord
     BEGIN
-    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' onclick='(function(t){var tabs=t.closest(&quot;.rdfop-tabs&quot;);tabs.querySelectorAll(&quot;.rdfop-tabs__tab&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__tab--active&quot;)});tabs.querySelectorAll(&quot;.rdfop-tabs__panel&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__panel--active&quot;)});t.classList.add(&quot;rdfop-tabs__tab--active&quot;);var p=tabs.querySelector(&quot;.rdfop-tabs__panel[data-tab-id=\x27&quot;+t.dataset.tabId+&quot;\x27]&quot;);if(p)p.classList.add(&quot;rdfop-tabs__panel--active&quot;)})(this)'>
+    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' draggable='true' ondragstart='rdfopTabDragStart(event)' ondragover='rdfopTabDragOver(event)' ondragleave='rdfopTabDragLeave(event)' ondrop='rdfopTabDrop(event)' ondragend='rdfopTabDragEnd(event)' onclick='(function(t){var tabs=t.closest(&quot;.rdfop-tabs&quot;);tabs.querySelectorAll(&quot;.rdfop-tabs__tab&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__tab--active&quot;)});tabs.querySelectorAll(&quot;.rdfop-tabs__panel&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__panel--active&quot;)});t.classList.add(&quot;rdfop-tabs__tab--active&quot;);var p=tabs.querySelector(&quot;.rdfop-tabs__panel[data-tab-id=\x27&quot;+t.dataset.tabId+&quot;\x27]&quot;);if(p)p.classList.add(&quot;rdfop-tabs__panel--active&quot;)})(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
       <button class='rdfop-tabs__close' onclick='event.stopPropagation();rdfopDelete(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</button>
     </div><?rdf
