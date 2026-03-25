@@ -1,6 +1,8 @@
 @PREFIX lx: <https://launix.de/rdf/#> .
 @PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 
+PARAMETER ?id "id"
+
 ?><!doctype html><html><head>
 <meta charset="utf-8">
 <title>RDFOP — Home</title>
@@ -41,7 +43,7 @@
 </style>
 </head><body>
   <div class="canvas">
-    <?rdf CALL render_object("main", REQ, RES) ?>
+    <?rdf CALL render_object(?id, REQ, RES) ?>
   </div>
   <script>
     (function(){

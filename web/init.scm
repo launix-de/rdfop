@@ -391,22 +391,28 @@ END
     (lambda (req res) (begin
         (set path (req "path"))
         (match path (regex "^/view/(.+)" _ id) (begin
-            ((res "header") "Content-Type" "text/html")
-            ((res "status") 200)
-            (set id (urldecode id))
-            (set print (res "print"))
-            (print "<!doctype html><html><head><meta charset='utf-8'><title>")
-            (print (htmlentities id))
-            (print " — RDFOP</title><style>:root{--bg:#f5f7fb;--panel:#fff;--text:#0f172a;--muted:#6b7280;--ring:#e5e7eb}html,body{height:100%;margin:0;font-family:system-ui,sans-serif;color:var(--text)}</style></head><body>")
-            ((rdf_functions "render_object") id req res)
-            (print "</body></html>")
+            /* inject id into query params and delegate to index.rdfhp handler */
+            (set _q (newsession))
+            (try (lambda () (map_assoc (req "query") (lambda (k v) (_q k v)))) (lambda (e) nil))
+            (_q "id" (urldecode id))
+            (set wrapped_req (newsession))
+            (wrapped_req "query" _q)
+            (wrapped_req "method" (req "method"))
+            (wrapped_req "path" (req "path"))
+            (wrapped_req "body" (try (lambda () (req "body")) (lambda (e) (lambda () ""))))
+            (wrapped_req "bodyParts" (try (lambda () (req "bodyParts")) (lambda (e) (lambda () '()))))
+            (set handler (rdfop_routes "/view"))
+            (if handler (handler wrapped_req res) (_old_handler req res))
         ) (_old_handler req res))
     ))
 ))
 
-/* template scipt for subpage */
-(watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))
-(watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content watch)))
+/* / redirects to /view/main */
+(rdfop_routes "/" (lambda (req res) (begin
+    ((res "header") "Location" "/view/main")
+    ((res "status") 302)
+)))
+(watch "index.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content watch)))
 (watch "rdf.rdfhp" (lambda (content) (rdfop_route "/rdf" "rdf" content watch)))
 
 /* handcraftet about page */
