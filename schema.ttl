@@ -351,8 +351,12 @@ rdfop:ComponentSelector_view a rdfop:EditorComponent ;
 .rdfop-selector--filled:hover > .rdfop-selector__move, .rdfop-selector--filled:hover > .rdfop-selector__clear { opacity: 1; }
 .rdfop-selector__clear:hover { color: #ef4444; border-color: #ef4444; }
 .rdfop-selector__move:hover { color: #0ea5e9; border-color: #0ea5e9; }
-.rdfop-selector--drop-target { outline: 3px solid #0ea5e9; background: rgba(14,165,233,.08); }
-.rdfop-palette--drop-target { outline: 3px solid #0ea5e9; background: rgba(14,165,233,.08); }""" ;
+.rdfop-palette--drop-target { outline: 3px solid #0ea5e9; filter: brightness(0.92) sepia(0.3) hue-rotate(170deg) saturate(2); }
+.rdfop-selector--drop-center { outline: 3px solid #0ea5e9; filter: brightness(0.92) sepia(0.3) hue-rotate(170deg) saturate(2); }
+.rdfop-selector--drop-left { box-shadow: inset 4px 0 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }
+.rdfop-selector--drop-right { box-shadow: inset -4px 0 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }
+.rdfop-selector--drop-top { box-shadow: inset 0 4px 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }
+.rdfop-selector--drop-bottom { box-shadow: inset 0 -4px 0 #0ea5e9; filter: brightness(0.96) sepia(0.15) hue-rotate(170deg) saturate(1.5); }""" ;
   rdfop:js """
 window.rdfopPaletteSelect = async function(btn, selectorId, typeName) {
   var resp = await fetch('/rdfop-create', {
@@ -404,18 +408,29 @@ window.rdfopSelectorClear = async function(btn) {
   }
   rdfopSwap(el, 'view');
 };
-/* cross-component drag: move content between selectors */
+/* cross-component drag with zone detection */
+var _dropZones = ['drop-center','drop-left','drop-right','drop-top','drop-bottom'];
+var _S = 'https://launix.de/rdfop/schema#';
+var _sid = function(id) { return id.includes(':') ? '<'+id+'>' : id; };
 window._rdfopDragSource = null;
+
+function _dropZone(e, el) {
+  var r = el.getBoundingClientRect();
+  var rx = (e.clientX - r.left) / r.width;
+  var ry = (e.clientY - r.top) / r.height;
+  if (rx > 0.34 && rx < 0.66 && ry > 0.34 && ry < 0.66) return 'center';
+  /* edge: pick closest */
+  var dists = {left: rx, right: 1-rx, top: ry, bottom: 1-ry};
+  var min = 'left'; for (var k in dists) if (dists[k] < dists[min]) min = k;
+  return min;
+}
+function _clearDropClass(el) { _dropZones.forEach(function(c){el.classList.remove('rdfop-selector--'+c)}); el.classList.remove('rdfop-palette--drop-target'); }
+
 window.rdfopMoveStart = function(e, btn) {
   var el = btn.closest('.rdfop-selector--filled');
   _rdfopDragSource = el;
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', el.dataset.rdfopParams);
-  /* highlight all drop targets */
-  document.querySelectorAll('.rdfop-palette, .rdfop-selector--filled').forEach(function(t) {
-    if (t !== el) t.addEventListener('dragover', rdfopMoveOver);
-  });
-  /* auto-open tabs on hover */
   document.querySelectorAll('.rdfop-tabs__tab').forEach(function(tab) {
     tab.addEventListener('dragenter', rdfopMoveTabHover);
     tab.addEventListener('dragleave', rdfopMoveTabLeave);
@@ -423,9 +438,7 @@ window.rdfopMoveStart = function(e, btn) {
 };
 window.rdfopMoveEnd = function(e) {
   _rdfopDragSource = null;
-  document.querySelectorAll('.rdfop-selector--drop-target,.rdfop-palette--drop-target').forEach(function(t) {
-    t.classList.remove('rdfop-selector--drop-target','rdfop-palette--drop-target');
-  });
+  document.querySelectorAll('[class*=rdfop-selector--drop-],[class*=rdfop-palette--drop-]').forEach(_clearDropClass);
   document.querySelectorAll('.rdfop-tabs__tab').forEach(function(tab) {
     tab.removeEventListener('dragenter', rdfopMoveTabHover);
     tab.removeEventListener('dragleave', rdfopMoveTabLeave);
@@ -434,53 +447,72 @@ window.rdfopMoveEnd = function(e) {
 };
 window.rdfopMoveOver = function(e, el) {
   if (!_rdfopDragSource) return;
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   e.dataTransfer.dropEffect = 'move';
   var target = el || e.currentTarget;
-  if (target !== _rdfopDragSource) {
-    target.classList.add(target.classList.contains('rdfop-palette') ? 'rdfop-palette--drop-target' : 'rdfop-selector--drop-target');
-  }
+  if (target === _rdfopDragSource) return;
+  _clearDropClass(target);
+  if (target.classList.contains('rdfop-palette')) { target.classList.add('rdfop-palette--drop-target'); }
+  else { target.classList.add('rdfop-selector--drop-' + _dropZone(e, target)); }
 };
 window.rdfopMoveDrop = async function(e, el) {
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   var target = el || e.currentTarget;
-  target.classList.remove('rdfop-selector--drop-target','rdfop-palette--drop-target');
+  _clearDropClass(target);
   if (!_rdfopDragSource || target === _rdfopDragSource) return;
+  var zone = target.classList.contains('rdfop-palette') ? 'center' : _dropZone(e, target);
   var srcEl = _rdfopDragSource;
   var srcP = JSON.parse(srcEl.dataset.rdfopParams || '{}');
   var tgtP = JSON.parse(target.dataset.rdfopParams || '{}');
-  var srcSid = srcP.id.includes(':') ? '<'+srcP.id+'>' : srcP.id;
-  var tgtSid = tgtP.id.includes(':') ? '<'+tgtP.id+'>' : tgtP.id;
   var srcSel = srcEl.dataset.selected;
   var tgtSel = target.dataset ? target.dataset.selected : null;
-  /* swap: remove old selectedNode triples, add new ones */
-  var del = '', ins = '';
-  if (srcSel) {
-    var srcSelSid = srcSel.includes(':') ? '<'+srcSel+'>' : srcSel;
-    del += srcSid+' <https://launix.de/rdfop/schema#selectedNode> '+srcSelSid+' .\n';
-    ins += tgtSid+' <https://launix.de/rdfop/schema#selectedNode> '+srcSelSid+' .\n';
-    /* update parent of moved node */
-    del += srcSelSid+' <https://launix.de/rdfop/schema#parent> '+srcSid+' .\n';
-    ins += srcSelSid+' <https://launix.de/rdfop/schema#parent> '+tgtSid+' .\n';
+
+  if (zone === 'center') {
+    /* swap contents */
+    var del = '', ins = '';
+    if (srcSel) { del += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n'; ins += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n'; del += _sid(srcSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n'; ins += _sid(srcSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n'; }
+    if (tgtSel) { del += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; ins += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n'; ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n'; }
+    await rdfopSave(del, ins);
+    rdfopSwap(srcEl, 'view');
+    rdfopSwap(target, 'view');
+  } else {
+    /* edge drop: create split */
+    var isH = (zone === 'left' || zone === 'right');
+    var splitType = isH ? _S+'SplitH' : _S+'SplitV';
+    var resp = await fetch('/rdfop-create', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'parent='+encodeURIComponent(tgtP.id)+'&type='+encodeURIComponent(splitType) });
+    if (!resp.ok) return;
+    var splitId = (await resp.text()).trim();
+    /* find the two child selectors of the new split */
+    var childResp = await fetch('/rdfop-render?comp='+encodeURIComponent(_S+'Explorer_view')+'&id=unused');
+    /* query children via inline fetch */
+    var qResp = await fetch('/rdf', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'rdf='+encodeURIComponent('SELECT ?c, ?ord WHERE { ?c <'+_S+'parent> <'+splitId+'> . ?c <'+_S+'order> ?ord }') });
+    var html = await qResp.text();
+    var parser = new DOMParser(); var doc = parser.parseFromString(html, 'text/html');
+    var rows = doc.querySelectorAll('tbody tr');
+    var children = []; rows.forEach(function(r){ var tds = r.querySelectorAll('td'); if(tds.length>=2) children.push({id:tds[0].textContent.trim(),ord:tds[1].textContent.trim()}); });
+    children.sort(function(a,b){ return a.ord < b.ord ? -1 : 1; });
+    if (children.length < 2) return;
+    var firstChild = children[0].id; /* order 1 = left/top */
+    var secondChild = children[1].id; /* order 2 = right/bottom */
+    /* assign: dragged content to the edge side, existing to the other */
+    var edgeSel = (zone === 'left' || zone === 'top') ? firstChild : secondChild;
+    var otherSel = (zone === 'left' || zone === 'top') ? secondChild : firstChild;
+    var del = '', ins = '';
+    /* move dragged content into edge selector */
+    if (srcSel) { del += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n'; ins += _sid(edgeSel)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n'; del += _sid(srcSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n'; ins += _sid(srcSel)+' <'+_S+'parent> '+_sid(edgeSel)+' .\n'; }
+    /* move existing content into other selector */
+    if (tgtSel) { del += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; ins += _sid(otherSel)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n'; ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(otherSel)+' .\n'; }
+    /* target selector now points to the split */
+    ins += _sid(tgtP.id)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
+    await rdfopSave(del, ins);
+    rdfopSwap(srcEl, 'view');
+    rdfopSwap(target, 'view');
   }
-  if (tgtSel) {
-    var tgtSelSid = tgtSel.includes(':') ? '<'+tgtSel+'>' : tgtSel;
-    del += tgtSid+' <https://launix.de/rdfop/schema#selectedNode> '+tgtSelSid+' .\n';
-    ins += srcSid+' <https://launix.de/rdfop/schema#selectedNode> '+tgtSelSid+' .\n';
-    del += tgtSelSid+' <https://launix.de/rdfop/schema#parent> '+tgtSid+' .\n';
-    ins += tgtSelSid+' <https://launix.de/rdfop/schema#parent> '+srcSid+' .\n';
-  }
-  await rdfopSave(del, ins);
-  /* re-render both selectors */
-  rdfopSwap(srcEl, 'view');
-  rdfopSwap(target, 'view');
 };
 /* auto-open tab on hover during drag */
 window.rdfopMoveTabHover = function(e) {
   var tab = e.currentTarget;
-  tab._rdfopHoverTimer = setTimeout(function(){ tab.click(); }, 800);
+  tab._rdfopHoverTimer = setTimeout(function(){ rdfopTabSwitch(tab); }, 800);
 };
 window.rdfopMoveTabLeave = function(e) {
   clearTimeout(e.currentTarget._rdfopHoverTimer);
@@ -490,7 +522,7 @@ window.rdfopMoveTabLeave = function(e) {
 PARAMETER ?id "id"
 SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel }
 BEGIN
-?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' ondragover='rdfopMoveOver(event,this)' ondragleave='this.classList.remove(&quot;rdfop-selector--drop-target&quot;)' ondrop='rdfopMoveDrop(event,this)'>
+?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' ondragover='rdfopMoveOver(event,this)' ondragleave='_clearDropClass(this)' ondrop='rdfopMoveDrop(event,this)'>
   <button class='rdfop-selector__move' draggable='true' ondragstart='rdfopMoveStart(event,this)' ondragend='rdfopMoveEnd(event)'>&#x2630;</button>
   <button class='rdfop-selector__clear' onclick='event.stopPropagation();rdfopSelectorClear(this)'>&#x2715;</button>
   <?rdf CALL render_object(?sel, REQ, RES) ?>
