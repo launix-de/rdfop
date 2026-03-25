@@ -364,7 +364,7 @@ rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Lite
 rdfop:Split rdfop:view rdfop:Split_view .
 
 # Split palette entries: horizontal and vertical
-rdfop:SplitH a rdfop:EntityType ; rdfs:label "Split \u2194" .
+rdfop:SplitH a rdfop:EntityType ; rdfs:label "Split ↔" .
 rdfop:SplitH rdfop:paletteVisible "true" .
 rdfop:SplitH rdfop:view rdfop:Split_view .
 rdfop:SplitH rdfop:initTemplate """$ID a <https://launix.de/rdfop/schema#Split> .
@@ -380,7 +380,7 @@ _:right <https://launix.de/rdfop/schema#parent> $ID .
 _:right <https://launix.de/rdfop/schema#order> "2" .
 """ .
 
-rdfop:SplitV a rdfop:EntityType ; rdfs:label "Split \u2195" .
+rdfop:SplitV a rdfop:EntityType ; rdfs:label "Split ↕" .
 rdfop:SplitV rdfop:paletteVisible "true" .
 rdfop:SplitV rdfop:view rdfop:Split_view .
 rdfop:SplitV rdfop:initTemplate """$ID a <https://launix.de/rdfop/schema#Split> .
@@ -628,7 +628,7 @@ window.rdfopTabDragEnd = function(e) {
 .rdfop-tabs--left .rdfop-tabs__bar, .rdfop-tabs--right .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
 .rdfop-tabs--right .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
 .rdfop-tabs--leftRotated .rdfop-tabs__bar, .rdfop-tabs--rightRotated .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
-.rdfop-tabs--leftRotated .rdfop-tabs__tab { writing-mode: vertical-rl; }
+.rdfop-tabs--leftRotated .rdfop-tabs__tab { writing-mode: vertical-lr; transform: rotate(180deg); }
 .rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-lr; }
 .rdfop-tabs--leftRotated .rdfop-tabs__dir, .rdfop-tabs--rightRotated .rdfop-tabs__dir { writing-mode: horizontal-tb; }
 .rdfop-tabs--leftRotated .rdfop-tabs__add, .rdfop-tabs--rightRotated .rdfop-tabs__add { writing-mode: horizontal-tb; }
