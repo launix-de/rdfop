@@ -688,13 +688,29 @@ window.rdfopDelete = window.rdfopDelete || async function(tabEl) {
   setTimeout(function(){ var t = nextTabId ? document.querySelector('.rdfop-tabs__tab[data-tab-id=\"'+nextTabId+'\"]') : document.querySelector('.rdfop-tabs__tab'); if(t) t.click(); }, 0);
 };
 /* auto-activate first tab in newly rendered TabGroups */
+window._rdfopActiveTabs = JSON.parse(localStorage.getItem('rdfop-active-tabs') || '{}');
+window.rdfopTabSwitch = function(t) {
+  var tabs = t.closest('.rdfop-tabs');
+  tabs.querySelectorAll(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab').forEach(function(x){x.classList.remove('rdfop-tabs__tab--active')});
+  tabs.querySelectorAll(':scope > .rdfop-tabs__content > .rdfop-tabs__panel').forEach(function(x){x.classList.remove('rdfop-tabs__panel--active')});
+  t.classList.add('rdfop-tabs__tab--active');
+  var p = tabs.querySelector(':scope > .rdfop-tabs__content > .rdfop-tabs__panel[data-tab-id=\''+t.dataset.tabId+'\']');
+  if(p) p.classList.add('rdfop-tabs__panel--active');
+  /* persist to localStorage */
+  var gid = JSON.parse(tabs.dataset.rdfopParams || '{}').id;
+  if (gid) { _rdfopActiveTabs[gid] = t.dataset.tabId; localStorage.setItem('rdfop-active-tabs', JSON.stringify(_rdfopActiveTabs)); }
+};
 window.rdfopTabInit = function(el) {
-  var tabs = el.querySelector ? el.querySelectorAll('.rdfop-tabs') : document.querySelectorAll('.rdfop-tabs');
-  tabs.forEach(function(t) {
-    if (!t.querySelector('.rdfop-tabs__tab--active')) {
-      var first = t.querySelector('.rdfop-tabs__tab');
-      if (first) first.click();
-    }
+  var tabgroups = el.querySelectorAll ? el.querySelectorAll('.rdfop-tabs') : document.querySelectorAll('.rdfop-tabs');
+  tabgroups.forEach(function(t) {
+    /* clean up stale drag indicators */
+    t.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after,.rdfop-tabs__tab--dragging').forEach(function(d){d.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after','rdfop-tabs__tab--dragging')});
+    if (t.querySelector(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab--active')) return;
+    var gid = JSON.parse(t.dataset.rdfopParams || '{}').id;
+    var saved = gid ? _rdfopActiveTabs[gid] : null;
+    var tab = saved ? t.querySelector(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab[data-tab-id="'+saved+'"]') : null;
+    if (!tab) tab = t.querySelector(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab');
+    if (tab) rdfopTabSwitch(tab);
   });
 };
 document.addEventListener('DOMContentLoaded', function(){ rdfopTabInit(document); });
@@ -820,7 +836,7 @@ BEGIN
     <?rdf
     SELECT ?tab, ?label, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label } ORDER BY ?ord
     BEGIN
-    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' draggable='true' ondragstart='rdfopTabDragStart(event)' ondragover='rdfopTabDragOver(event)' ondragleave='rdfopTabDragLeave(event)' ondrop='rdfopTabDrop(event)' ondragend='rdfopTabDragEnd(event)' onclick='(function(t){var tabs=t.closest(&quot;.rdfop-tabs&quot;);tabs.querySelectorAll(&quot;.rdfop-tabs__tab&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__tab--active&quot;)});tabs.querySelectorAll(&quot;.rdfop-tabs__panel&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__panel--active&quot;)});t.classList.add(&quot;rdfop-tabs__tab--active&quot;);var p=tabs.querySelector(&quot;.rdfop-tabs__panel[data-tab-id=\x27&quot;+t.dataset.tabId+&quot;\x27]&quot;);if(p)p.classList.add(&quot;rdfop-tabs__panel--active&quot;)})(this)'>
+    ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' draggable='true' ondragstart='rdfopTabDragStart(event)' ondragover='rdfopTabDragOver(event)' ondragleave='rdfopTabDragLeave(event)' ondrop='rdfopTabDrop(event)' ondragend='rdfopTabDragEnd(event)' onclick='rdfopTabSwitch(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
       <button class='rdfop-tabs__close' onclick='event.stopPropagation();rdfopDelete(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</button>
     </div><?rdf
