@@ -124,7 +124,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
    renders typed entities as clickable links, plain values as text */
 (set _render_link_tpl (parse_rdfhp "rdf" "
 PARAMETER ?value \"value\"
-SELECT ?t WHERE { ?value a ?t } LIMIT 1
+SELECT ?t WHERE { ?value a ?t }
 BEGIN
 ?><a href='#' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?value ?>}' onclick='event.preventDefault();rdfopOverlay(this)'><?rdf PRINT HTML ?value ?></a><?rdf
 ELSE
