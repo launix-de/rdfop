@@ -480,6 +480,14 @@ window.rdfopMoveStart = function(e, btn) {
   document.querySelectorAll('.rdfop-tabs__tab').forEach(function(tab) {
     tab.addEventListener('dragover', rdfopMoveTabHover);
   });
+  /* cover iframes so they don't steal drag events */
+  document.querySelectorAll('iframe').forEach(function(f) {
+    var cover = document.createElement('div');
+    cover.className = 'rdfop-iframe-cover';
+    cover.style.cssText = 'position:absolute;inset:0;z-index:5;';
+    f.parentElement.style.position = f.parentElement.style.position || 'relative';
+    f.parentElement.appendChild(cover);
+  });
 };
 window.rdfopMoveEnd = function(e) {
   _rdfopDragSource = null;
@@ -488,6 +496,8 @@ window.rdfopMoveEnd = function(e) {
     tab.removeEventListener('dragover', rdfopMoveTabHover);
     clearTimeout(tab._rdfopHoverTimer); tab._rdfopHoverTimer = null;
   });
+  /* remove iframe covers */
+  document.querySelectorAll('.rdfop-iframe-cover').forEach(function(c) { c.remove(); });
 };
 window.rdfopMoveOver = function(e, el) {
   if (!_rdfopDragSource) return;
