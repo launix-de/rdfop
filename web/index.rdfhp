@@ -258,11 +258,10 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
        * rdfopCreate(btn,p,t) — create child node, then re-render parent
        */
 
-      /* open entity in overlay via /rdfop-render */
+      /* open entity detail in overlay */
       window.rdfopOverlay = async function(el) {
         var p = JSON.parse(el.dataset.rdfopParams || '{}');
-        p.mode = p.mode || 'view';
-        var resp = await fetch('/rdfop-render?' + new URLSearchParams(p));
+        var resp = await fetch('/rdfop-render?comp=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23ObjectDetail_view&id=' + encodeURIComponent(p.id));
         var html = await resp.text();
         openOverlayHTML(html);
       };

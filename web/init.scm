@@ -274,7 +274,11 @@ END
 (rdfop_routes "/rdfop-render" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/html")
     ((res "status") 200)
-    ((rdf_functions "render_object") ((req "query") "id") req res)
+    (set comp (try (lambda () ((req "query") "comp")) (lambda (e) nil)))
+    (if comp
+        ((rdf_functions "render_component") comp req res)
+        ((rdf_functions "render_object") ((req "query") "id") req res)
+    )
 )))
 
 /* POST /rdfop-create — create a new node: parent=ID&type=Tab (returns new node id) */
