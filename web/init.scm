@@ -300,9 +300,8 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
             (_t "ttl" (concat (_t "ttl")
                 "<" new_id "> <https://launix.de/rdfop/schema#tabLabel> \"New Tab\" .\n"
                 "<" new_id "> <https://launix.de/rdfop/schema#children> <" child_id "> .\n"
-                "<" child_id "> a <https://launix.de/rdfop/schema#HTMLView> .\n"
+                "<" child_id "> a <https://launix.de/rdfop/schema#ComponentSelector> .\n"
                 "<" child_id "> <https://launix.de/rdfop/schema#parent> <" new_id "> .\n"
-                "<" child_id "> <https://launix.de/rdfop/schema#html> \"<p>New tab content</p>\" .\n"
             ))
         ))
         (try (lambda () (load_ttl "rdf" (_t "ttl"))) (lambda (e) (begin ((res "status") 500) ((res "print") (concat "error: " e)))))

@@ -95,7 +95,7 @@ rdfop:HTMLEdit a rdfop:EditorComponent ;
   rdfop:css """.rdfop-edit-toolbar { display: flex; gap: 6px; justify-content: flex-end; padding: 8px 12px 0; }
 .rdfop-edit-toolbar button { background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 16px; }
 .rdfop-edit-toolbar button:hover { background: #f1f5f9; }
-.rdfop-c--editing { display: flex; flex-direction: column; height: 100%; }
+.rdfop-c--editing { display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; }
 .rdfop-editor { flex: 1; width: 100%; font-family: monospace; font-size: 13px; border: none; padding: 10px 12px; resize: none; box-sizing: border-box; outline: none; }""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
@@ -281,6 +281,82 @@ END""" .
 rdfop:parent a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdf:Resource .
 rdfop:children a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdf:Resource .
 rdfop:order a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
+
+# --- ComponentSelector ---
+rdfop:ComponentSelector a rdfop:EntityType .
+rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:range rdf:Resource .
+rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
+
+rdfop:ComponentSelector_view a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-palette { display: flex; flex-wrap: wrap; gap: 12px; padding: 1em; align-content: flex-start; }
+.rdfop-palette__item { background: var(--panel); border: 1px solid var(--ring); border-radius: 10px; padding: 16px 20px; cursor: pointer; min-width: 120px; text-align: center; transition: box-shadow .15s, transform .15s; }
+.rdfop-palette__item:hover { box-shadow: 0 4px 12px rgba(2,6,23,.12); transform: translateY(-2px); }
+.rdfop-selector--filled { position: relative; width: 100%; height: 100%; }
+.rdfop-selector__clear { position: absolute; top: 4px; right: 4px; background: var(--panel); border: 1px solid var(--ring); border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 20px; text-align: center; z-index: 10; opacity: 0; transition: opacity .15s; }
+.rdfop-selector--filled:hover > .rdfop-selector__clear { opacity: 1; }
+.rdfop-selector__clear:hover { color: #ef4444; border-color: #ef4444; }""" ;
+  rdfop:js """
+window.rdfopPaletteSelect = async function(btn, selectorId, typeName) {
+  var resp = await fetch('/rdfop-create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'parent=' + encodeURIComponent(selectorId) + '&type=' + encodeURIComponent(typeName)
+  });
+  if (!resp.ok) return;
+  var newId = (await resp.text()).trim();
+  /* store selectedNode on the selector */
+  var sid = selectorId.includes(':') ? '<' + selectorId + '>' : selectorId;
+  await fetch('/rdfop-save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'insert=' + encodeURIComponent(sid + ' <https://launix.de/rdfop/schema#selectedNode> <' + newId + '> .')
+  });
+  /* re-render the selector */
+  var el = btn.closest('.rdfop-c');
+  rdfopSwap(el, 'view');
+};
+window.rdfopSelectorClear = async function(btn) {
+  var el = btn.closest('.rdfop-c');
+  var p = JSON.parse(el.dataset.rdfopParams || '{}');
+  var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
+  /* find selectedNode from the rendered child's data */
+  var child = el.querySelector('.rdfop-c');
+  if (child) {
+    var cp = JSON.parse(child.dataset.rdfopParams || '{}');
+    if (cp.id) {
+      /* delete the child subtree */
+      await fetch('/rdfop-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'id=' + encodeURIComponent(cp.id)
+      });
+      /* delete selectedNode triple */
+      var childSid = cp.id.includes(':') ? '<' + cp.id + '>' : cp.id;
+      await fetch('/rdfop-save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'delete=' + encodeURIComponent(sid + ' <https://launix.de/rdfop/schema#selectedNode> ' + childSid + ' .')
+      });
+    }
+  }
+  rdfopSwap(el, 'view');
+};""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel }
+BEGIN
+?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <button class='rdfop-selector__clear' onclick='event.stopPropagation();rdfopSelectorClear(this)'>&#x2715;</button>
+  <?rdf CALL render_object(?sel, REQ, RES) ?>
+</div><?rdf
+ELSE
+?><div class='rdfop-c rdfop-palette' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <?rdf SELECT ?type, ?label WHERE { ?type rdfop:paletteVisible true . ?type a rdfop:EntityType }
+  BEGIN
+  ?><div class='rdfop-palette__item' onclick='rdfopPaletteSelect(this,<?rdf PRINT JSON ?id ?>,&quot;<?rdf PRINT HTML ?type ?>&quot;)'><?rdf PRINT HTML ?type ?></div><?rdf
+  END ?>
+</div><?rdf
+END""" .
 
 # --- TabGroup ---
 rdfop:TabGroup a rdfop:EntityType .

@@ -270,9 +270,9 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           el.replaceWith(node);
           /* execute inline scripts that outerHTML would skip */
           node.querySelectorAll('script').forEach(function(s) { eval(s.textContent); });
-          /* auto-focus first input in edit mode + auto-size */
-          var af = node.querySelector('input, textarea');
-          if (af) { if (window.rdfopTextFit) rdfopTextFit(af); af.focus(); af.select(); }
+          /* auto-focus + auto-size for textedit inputs */
+          var te = node.querySelector('.rdfop-textedit--editing input');
+          if (te) { if (window.rdfopTextFit) rdfopTextFit(te); te.focus(); te.select(); }
         } catch(e) { console.error('rdfopSwap', e); }
       };
 
