@@ -539,8 +539,9 @@ window.rdfopMoveDrop = async function(e, el) {
     await rdfopSave(del, ins);
     /* source is now empty — dissolve parent split if applicable */
     await _dissolveEmptySelector(srcP.id);
-    rdfopSwap(srcEl, 'view');
-    rdfopSwap(target, 'view');
+    /* only re-render elements still in the DOM (dissolve may have replaced them) */
+    if (document.contains(srcEl)) rdfopSwap(srcEl, 'view');
+    if (document.contains(target)) rdfopSwap(target, 'view');
   }
 };
 /* dissolve empty palette: remove from split or tab */
