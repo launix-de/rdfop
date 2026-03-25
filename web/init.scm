@@ -275,13 +275,16 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         ((res "print") "missing parent or type")
     ) (begin
         (set new_id (concat "urn:uuid:" (uuid)))
-        /* compute next order number: count existing children */
-        (set _cnt (newsession))
-        (_cnt "n" 0)
+        /* compute next order number: find max order among siblings + 1 */
+        (set _max (newsession))
+        (_max "n" 0)
         (set sparql_parent (if (match (concat parent_id) (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
-        (define resultrow (lambda (o) (_cnt "n" (+ (_cnt "n") 1))))
-        (try (lambda () (eval (parse_sparql "rdf" (concat "SELECT ?c WHERE { ?c <https://launix.de/rdfop/schema#parent> " sparql_parent " }")))) (lambda (e) nil))
-        (set order (+ (_cnt "n") 1))
+        (define resultrow (lambda (o) (begin
+            (set v (simplify (coalesce (o "?ord") "0")))
+            (if (> v (_max "n")) (_max "n" v))
+        )))
+        (try (lambda () (eval (parse_sparql "rdf" (concat "SELECT ?ord WHERE { ?c <https://launix.de/rdfop/schema#parent> " sparql_parent " . ?c <https://launix.de/rdfop/schema#order> ?ord }")))) (lambda (e) nil))
+        (set order (+ (_max "n") 1))
         /* build TTL via session to avoid scoping issues */
         (set _t (newsession))
         (_t "ttl" (concat
@@ -330,6 +333,43 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     )
     ((res "status") 200)
     ((res "print") "ok")
+)))
+
+/* POST /rdfop-delete — deletes a node and its children recursively */
+(rdfop_routes "/rdfop-delete" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/plain")
+    (set body_raw (try (lambda () ((req "body"))) (lambda (e) "")))
+    (set bp (newsession))
+    (map (split body_raw "&") (lambda (pair) (begin
+        (set parts (split pair "="))
+        (set k (urldecode (replace (car parts) "+" " ")))
+        (set v (urldecode (replace (coalesce (car (cdr parts)) "") "+" " ")))
+        (bp k v)
+    )))
+    (set node_id (bp "id"))
+    (if (nil? node_id) (begin ((res "status") 400) ((res "print") "missing id"))
+    (begin
+        /* recursive delete: collect all triples where node is subject, then recurse into children */
+        (set _del (newsession))
+        (_del "delete_node" (lambda (id) (begin
+            (set sparql_id (if (match (concat id) (regex ":" _) true false) (concat "<" id ">") id))
+            /* find and delete children first */
+            (set _ch (newsession))
+            (_ch "children" '())
+            (try (lambda () (begin
+                (define resultrow (lambda (o) (_ch "children" (cons (o "?child") (_ch "children")))))
+                (eval (parse_sparql "rdf" (concat "SELECT ?child WHERE { " sparql_id " <https://launix.de/rdfop/schema#children> ?child }")))
+            )) (lambda (e) nil))
+            (map (_ch "children") (lambda (child) ((_del "delete_node") child)))
+            /* delete all triples where this node is subject */
+            (scan "rdf" "rdf" '("s") (lambda (s) (equal? s id)) '("$update") (lambda ($update) ($update)) (lambda (a b) b) nil)
+            /* delete parent's children link to this node */
+            (scan "rdf" "rdf" '("p" "o") (lambda (p o) (and (equal? p "https://launix.de/rdfop/schema#children") (equal? o id))) '("$update") (lambda ($update) ($update)) (lambda (a b) b) nil)
+        )))
+        ((_del "delete_node") node_id)
+        ((res "status") 200)
+        ((res "print") "ok")
+    ))
 )))
 
 /* template scipt for subpage */
