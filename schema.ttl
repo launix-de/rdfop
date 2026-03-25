@@ -609,8 +609,10 @@ window._dissolveEmptySelector = async function(selectorId, noRender) {
   var parents = await _rdfopQuery('SELECT ?parent, ?ptype WHERE { <'+selectorId+'> <'+_S+'parent> ?parent . ?parent a ?ptype }');
   if (!parents.length) return null;
   var parentId = parents[0]['?parent'];
-  var parentType = parents[0]['?ptype'];
-  if (parentType === _S+'Split') {
+  var parentTypes = parents.map(function(r){ return r['?ptype']; });
+  var isSplit = parentTypes.some(function(t){ return t === _S+'Split'; });
+  var isTab = parentTypes.some(function(t){ return t === _S+'Tab'; });
+  if (isSplit) {
     var splitParents = await _rdfopQuery('SELECT ?gp WHERE { <'+parentId+'> <'+_S+'parent> ?gp }');
     if (!splitParents.length) return null;
     var gpId = splitParents[0]['?gp'];
@@ -627,7 +629,7 @@ window._dissolveEmptySelector = async function(selectorId, noRender) {
     await fetch('/rdfop-delete', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'id='+encodeURIComponent(parentId) });
     if (!noRender) { var gpEl = document.querySelector('[data-rdfop-params*=\'"id":"'+gpId+'"\']'); if (gpEl) rdfopSwap(gpEl, 'view'); }
     return gpId;
-  } else if (parentType === _S+'Tab') {
+  } else if (isTab) {
     /* delete tab directly — no confirm during drag operations */
     await fetch('/rdfop-delete', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'id='+encodeURIComponent(parentId) });
     if (!noRender) {
@@ -643,7 +645,7 @@ window.rdfopPaletteRemove = async function(btn) {
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   /* check if parent is a tab — ask for confirmation */
   var parents = await _rdfopQuery('SELECT ?parent, ?ptype WHERE { <'+p.id+'> <'+_S+'parent> ?parent . ?parent a ?ptype }');
-  if (parents.length && parents[0]['?ptype'] === _S+'Tab') {
+  if (parents.length && parents.some(function(r){ return r['?ptype'] === _S+'Tab'; })) {
     var tabEl = document.querySelector('.rdfop-tabs__tab[data-tab-id="'+parents[0]['?parent']+'"]');
     var tabName = tabEl && tabEl.querySelector('.rdfop-textedit') ? tabEl.querySelector('.rdfop-textedit').textContent.trim() : 'tab';
     if (!confirm('Delete tab "'+tabName+'"?')) return;
