@@ -577,7 +577,7 @@ rdfop:TabGroup_view a rdfop:EditorComponent ;
 window.rdfopTabDirection = window.rdfopTabDirection || function(bar) {
   var tabs = bar.closest('.rdfop-c');
   var p = JSON.parse(tabs.dataset.rdfopParams || '{}');
-  var dirs = {top:'\u2B07 Tabs top',bottom:'\u2B06 Tabs bottom',left:'\u2B05 Tabs left',right:'\u2B95 Tabs right',leftRotated:'\u2934 Tabs left (rotated)',rightRotated:'\u2935 Tabs right (rotated)'};
+  var dirs = {top:'\u2B06 Tabs top',bottom:'\u2B07 Tabs bottom',left:'\u2B05 Tabs left',right:'\u2B95 Tabs right',leftRotated:'\u2934 Tabs left (rotated)',rightRotated:'\u2935 Tabs right (rotated)'};
   var menu = document.createElement('div');
   menu.className = 'rdfop-dir-menu';
   menu.style.cssText = 'position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--ring);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px 0';
