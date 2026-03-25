@@ -287,24 +287,21 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (set sparql_parent (if (match (concat parent_id) (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
         /* order = unix timestamp so new items sort to the end */
         (set order (format_date (now) "%Y%m%d%H%i%s"))
-        /* build TTL via session to avoid scoping issues */
-        (set _t (newsession))
-        (_t "ttl" (concat
+        /* base triples: type, parent, order */
+        (set base_ttl (concat
             "<" new_id "> a <" node_type "> .\n"
             "<" new_id "> <https://launix.de/rdfop/schema#parent> " sparql_parent " .\n"
             "<" new_id "> <https://launix.de/rdfop/schema#order> \"" order "\" .\n"
         ))
-        /* type-specific defaults */
-        (if (equal? node_type "https://launix.de/rdfop/schema#Tab") (begin
-            (set child_id (concat "urn:uuid:" (uuid)))
-            (_t "ttl" (concat (_t "ttl")
-                "<" new_id "> <https://launix.de/rdfop/schema#tabLabel> \"New Tab\" .\n"
-                "<" new_id "> <https://launix.de/rdfop/schema#children> <" child_id "> .\n"
-                "<" child_id "> a <https://launix.de/rdfop/schema#ComponentSelector> .\n"
-                "<" child_id "> <https://launix.de/rdfop/schema#parent> <" new_id "> .\n"
-            ))
-        ))
-        (try (lambda () (load_ttl "rdf" (_t "ttl"))) (lambda (e) (begin ((res "status") 500) ((res "print") (concat "error: " e)))))
+        /* look up initTemplate from the EntityType */
+        (set _it (newsession))
+        (try (lambda () (begin
+            (define resultrow (lambda (o) (_it "tpl" (o "?tpl"))))
+            (eval (parse_sparql "rdf" (concat "SELECT ?tpl WHERE { <" node_type "> <https://launix.de/rdfop/schema#initTemplate> ?tpl }")))
+        )) (lambda (e) nil))
+        /* expand initTemplate: replace $ID with new_id, generate UUIDs for _:blanks */
+        (set extra_ttl (if (nil? (_it "tpl")) "" (replace (_it "tpl") "$ID" (concat "<" new_id ">"))))
+        (try (lambda () (load_ttl "rdf" (concat base_ttl extra_ttl))) (lambda (e) (begin ((res "status") 500) ((res "print") (concat "error: " e)))))
         ((res "status") 200)
         ((res "print") new_id)
     ))

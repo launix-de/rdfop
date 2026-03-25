@@ -68,6 +68,8 @@ rdfop:viewTemplate a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rd
 
 # Component type: HTMLView
 rdfop:HTMLView a rdfop:EntityType .
+rdfop:HTMLView rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#html> "<p>Click the pencil to edit.</p>" .
+""" .
 
 # Attribute for HTMLView content
 rdfop:html a rdf:Property ; rdfs:domain rdfop:HTMLView ; rdfs:range rdfs:Literal .
@@ -77,7 +79,7 @@ rdfop:HTMLView rdfop:view rdfop:HTMLView_view .
 rdfop:HTMLView rdfop:edit rdfop:HTMLEdit .
 
 rdfop:HTMLView_view a rdfop:EditorComponent ;
-  rdfop:css """.rdfop-edit-btn { position: absolute; top: 8px; right: 12px; background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 16px; line-height: 1; z-index: 10; opacity: 0; transition: opacity .15s; }
+  rdfop:css """.rdfop-edit-btn { position: absolute; top: 34px; right: 12px; background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 16px; line-height: 1; z-index: 10; opacity: 0; transition: opacity .15s; }
 .rdfop-c:hover > .rdfop-edit-btn { opacity: 1; }
 .rdfop-edit-btn:hover { background: #f1f5f9; }""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
@@ -118,7 +120,7 @@ rdfop:Tab rdfop:view rdfop:TextEdit_view .
 rdfop:Tab rdfop:edit rdfop:TextEdit_edit .
 
 rdfop:TextEdit_view a rdfop:EditorComponent ;
-  rdfop:css """.rdfop-textedit { cursor: default; }
+  rdfop:css """.rdfop-textedit { cursor: default; min-width: 40px; display: inline-block; }
 .rdfop-textedit--editing { position: relative; z-index: 1001; }
 .rdfop-textedit--editing input { font: inherit; border: none; background: transparent; padding: 0; margin: 0; outline: none; width: 1ch; position: relative; z-index: 1002; }
 .rdfop-textedit-overlay { position: fixed; inset: 0; z-index: 1000; }""" ;
@@ -316,28 +318,22 @@ window.rdfopPaletteSelect = async function(btn, selectorId, typeName) {
   rdfopSwap(el, 'view');
 };
 window.rdfopSelectorClear = async function(btn) {
-  var el = btn.closest('.rdfop-c');
+  var el = btn.closest('.rdfop-selector--filled');
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
-  /* find selectedNode from the rendered child's data */
-  var child = el.querySelector('.rdfop-c');
-  if (child) {
-    var cp = JSON.parse(child.dataset.rdfopParams || '{}');
-    if (cp.id) {
-      /* delete the child subtree */
-      await fetch('/rdfop-delete', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'id=' + encodeURIComponent(cp.id)
-      });
-      /* delete selectedNode triple */
-      var childSid = cp.id.includes(':') ? '<' + cp.id + '>' : cp.id;
-      await fetch('/rdfop-save', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'delete=' + encodeURIComponent(sid + ' <https://launix.de/rdfop/schema#selectedNode> ' + childSid + ' .')
-      });
-    }
+  var selId = el.dataset.selected;
+  if (selId) {
+    await fetch('/rdfop-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'id=' + encodeURIComponent(selId)
+    });
+    var selSid = selId.includes(':') ? '<' + selId + '>' : selId;
+    await fetch('/rdfop-save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'delete=' + encodeURIComponent(sid + ' <https://launix.de/rdfop/schema#selectedNode> ' + selSid + ' .')
+    });
   }
   rdfopSwap(el, 'view');
 };""" ;
@@ -345,7 +341,7 @@ window.rdfopSelectorClear = async function(btn) {
 PARAMETER ?id "id"
 SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel }
 BEGIN
-?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>'>
   <button class='rdfop-selector__clear' onclick='event.stopPropagation();rdfopSelectorClear(this)'>&#x2715;</button>
   <?rdf CALL render_object(?sel, REQ, RES) ?>
 </div><?rdf
@@ -360,6 +356,8 @@ END""" .
 
 # --- TabGroup ---
 rdfop:TabGroup a rdfop:EntityType .
+rdfop:TabGroup rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#tabDirection> "top" .
+""" .
 rdfop:tabDirection a rdf:Property ; rdfs:domain rdfop:TabGroup ; rdfs:range rdfs:Literal .
 rdfop:paletteVisible a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
 rdfop:TabGroup rdfop:paletteVisible true .
@@ -368,6 +366,11 @@ rdfop:HTMLView rdfop:paletteVisible true .
 # --- Tab ---
 rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
+rdfop:Tab rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#tabLabel> "New Tab" .
+$ID <https://launix.de/rdfop/schema#children> _:child .
+_:child a <https://launix.de/rdfop/schema#ComponentSelector> .
+_:child <https://launix.de/rdfop/schema#parent> $ID .
+""" .
 
 # TabGroup components
 rdfop:TabGroup rdfop:view rdfop:TabGroup_view .

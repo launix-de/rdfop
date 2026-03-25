@@ -1,12 +1,16 @@
 @prefix rdfop: <https://launix.de/rdfop/schema#> .
 
-# Root node: a TabGroup with tabs on top
-main a rdfop:TabGroup ;
+# Root node: a ComponentSelector that starts with a TabGroup
+main a rdfop:ComponentSelector ;
+  rdfop:selectedNode _:tg .
+
+_:tg a rdfop:TabGroup ;
+  rdfop:parent main ;
   rdfop:tabDirection "top" .
 
 # Welcome tab with RDFOP logo and description
 _:tab1 a rdfop:Tab ;
-  rdfop:parent main ;
+  rdfop:parent _:tg ;
   rdfop:tabLabel "RDFOP" ;
   rdfop:order "0000000001" ;
   rdfop:children _:hw .
@@ -17,7 +21,7 @@ _:hw a rdfop:HTMLView ;
 
 # Explorer tab
 _:tab2 a rdfop:Tab ;
-  rdfop:parent main ;
+  rdfop:parent _:tg ;
   rdfop:tabLabel "Explorer" ;
   rdfop:order "0000000002" ;
   rdfop:children _:expl .
@@ -27,7 +31,7 @@ _:expl a rdfop:Explorer ;
 
 # Settings tab
 _:tab3 a rdfop:Tab ;
-  rdfop:parent main ;
+  rdfop:parent _:tg ;
   rdfop:tabLabel "Settings" ;
   rdfop:order "0000000003" ;
   rdfop:children _:sett .
@@ -37,7 +41,7 @@ _:sett a rdfop:Settings ;
 
 # SPARQL Console tab
 _:tab4 a rdfop:Tab ;
-  rdfop:parent main ;
+  rdfop:parent _:tg ;
   rdfop:tabLabel "SPARQL" ;
   rdfop:order "0000000004" ;
   rdfop:children _:sparql .
@@ -47,7 +51,7 @@ _:sparql a rdfop:SPARQLConsole ;
 
 # TTL Import tab
 _:tab5 a rdfop:Tab ;
-  rdfop:parent main ;
+  rdfop:parent _:tg ;
   rdfop:tabLabel "TTL Import" ;
   rdfop:order "0000000005" ;
   rdfop:children _:ttlimp .
