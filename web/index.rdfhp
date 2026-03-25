@@ -258,6 +258,68 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
        * rdfopCreate(btn,p,t) — create child node, then re-render parent
        */
 
+      /* Undo stack in localStorage */
+      window._rdfopUndoStack = JSON.parse(localStorage.getItem('rdfop-undo') || '[]');
+      window._rdfopRedoStack = JSON.parse(localStorage.getItem('rdfop-redo') || '[]');
+      var _undoMaxDepth = 100;
+
+      window.rdfopSave = async function(deleteTtl, insertTtl) {
+        _rdfopUndoStack.push({del: deleteTtl, ins: insertTtl, t: Date.now()});
+        if (_rdfopUndoStack.length > _undoMaxDepth) _rdfopUndoStack.shift();
+        _rdfopRedoStack.length = 0;
+        localStorage.setItem('rdfop-undo', JSON.stringify(_rdfopUndoStack));
+        localStorage.setItem('rdfop-redo', '[]');
+        var body = '';
+        if (deleteTtl) body += 'delete=' + encodeURIComponent(deleteTtl);
+        if (insertTtl) body += (body ? '&' : '') + 'insert=' + encodeURIComponent(insertTtl);
+        await fetch('/rdfop-save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body
+        });
+      };
+
+      window.rdfopUndo = async function() {
+        if (!_rdfopUndoStack.length) return;
+        var op = _rdfopUndoStack.pop();
+        _rdfopRedoStack.push(op);
+        localStorage.setItem('rdfop-undo', JSON.stringify(_rdfopUndoStack));
+        localStorage.setItem('rdfop-redo', JSON.stringify(_rdfopRedoStack));
+        /* reverse: delete what was inserted, insert what was deleted */
+        var body = '';
+        if (op.ins) body += 'delete=' + encodeURIComponent(op.ins);
+        if (op.del) body += (body ? '&' : '') + 'insert=' + encodeURIComponent(op.del);
+        await fetch('/rdfop-save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body
+        });
+        location.reload();
+      };
+
+      window.rdfopRedo = async function() {
+        if (!_rdfopRedoStack.length) return;
+        var op = _rdfopRedoStack.pop();
+        _rdfopUndoStack.push(op);
+        localStorage.setItem('rdfop-undo', JSON.stringify(_rdfopUndoStack));
+        localStorage.setItem('rdfop-redo', JSON.stringify(_rdfopRedoStack));
+        var body = '';
+        if (op.del) body += 'delete=' + encodeURIComponent(op.del);
+        if (op.ins) body += (body ? '&' : '') + 'insert=' + encodeURIComponent(op.ins);
+        await fetch('/rdfop-save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body
+        });
+        location.reload();
+      };
+
+      /* Ctrl+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo */
+      document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && !e.shiftKey && e.key === 'z') { e.preventDefault(); rdfopUndo(); }
+        if (e.ctrlKey && (e.shiftKey && e.key === 'Z' || e.key === 'y')) { e.preventDefault(); rdfopRedo(); }
+      });
+
       window.rdfopSwap = async function(el, mode) {
         var p = JSON.parse(el.dataset.rdfopParams || '{}');
         p.mode = mode;
@@ -273,6 +335,8 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           /* auto-focus + auto-size for textedit inputs */
           var te = node.querySelector('.rdfop-textedit--editing input');
           if (te) { if (window.rdfopTextFit) rdfopTextFit(te); te.focus(); te.select(); }
+          /* init TabGroups + Splits in new content */
+          if (window.rdfopTabInit) rdfopTabInit(node);
         } catch(e) { console.error('rdfopSwap', e); }
       };
 
@@ -285,12 +349,10 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         var newVal = field.value;
         if (oldVal !== newVal) {
           var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
-          await fetch('/rdfop-save', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'delete=' + encodeURIComponent(sid + ' <' + p.p + '> ' + JSON.stringify(oldVal) + ' .') +
-                  '&insert=' + encodeURIComponent(sid + ' <' + p.p + '> ' + JSON.stringify(newVal) + ' .')
-          });
+          await rdfopSave(
+            sid + ' <' + p.p + '> ' + JSON.stringify(oldVal) + ' .',
+            sid + ' <' + p.p + '> ' + JSON.stringify(newVal) + ' .'
+          );
         }
         rdfopSwap(el, 'view');
       };
