@@ -479,6 +479,10 @@ window.rdfopMoveDrop = async function(e, el) {
   var tgtP = JSON.parse(target.dataset.rdfopParams || '{}');
   var srcSel = srcEl.dataset.selected;
   var tgtSel = target.dataset ? target.dataset.selected : null;
+  /* find nearest common ancestor selector BEFORE any DOM changes */
+  var _commonAncestorSelector = null;
+  var _a = srcEl; while (_a) { if (_a.classList && (_a.classList.contains('rdfop-selector--filled') || _a.classList.contains('rdfop-palette')) && _a.contains(target)) { _commonAncestorSelector = _a; break; } _a = _a.parentElement; }
+  if (!_commonAncestorSelector) { _a = target; while (_a) { if (_a.classList && (_a.classList.contains('rdfop-selector--filled') || _a.classList.contains('rdfop-palette')) && _a.contains(srcEl)) { _commonAncestorSelector = _a; break; } _a = _a.parentElement; } }
   if (zone === 'center') {
     /* swap: exchange parent + order of the two selectedNodes */
     if (!srcSel || !tgtSel) { /* one side empty: just move */
@@ -496,23 +500,18 @@ window.rdfopMoveDrop = async function(e, el) {
       var sOrd = srcSelOrd.length ? srcSelOrd[0]['?ord'] : null;
       var tOrd = tgtSelOrd.length ? tgtSelOrd[0]['?ord'] : null;
       var del = '', ins = '';
-      /* swap parent */
       del += _sid(srcSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n';
       ins += _sid(srcSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n';
       del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n';
       ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n';
-      /* swap selectedNode */
       del += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n';
       ins += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n';
       del += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n';
       ins += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n';
-      /* swap order */
       if (sOrd) { del += _sid(srcSel)+' <'+_S+'order> '+JSON.stringify(sOrd)+' .\n'; ins += _sid(tgtSel)+' <'+_S+'order> '+JSON.stringify(sOrd)+' .\n'; }
       if (tOrd) { del += _sid(tgtSel)+' <'+_S+'order> '+JSON.stringify(tOrd)+' .\n'; ins += _sid(srcSel)+' <'+_S+'order> '+JSON.stringify(tOrd)+' .\n'; }
       await rdfopSave(del, ins);
     }
-    rdfopSwap(srcEl, 'view');
-    rdfopSwap(target, 'view');
   } else {
     /* edge drop: create split */
     var isH = (zone === 'left' || zone === 'right');
@@ -520,26 +519,24 @@ window.rdfopMoveDrop = async function(e, el) {
     var resp = await fetch('/rdfop-create', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'parent='+encodeURIComponent(tgtP.id)+'&type='+encodeURIComponent(splitType) });
     if (!resp.ok) return;
     var splitId = (await resp.text()).trim();
-    /* find the two child selectors of the new split */
     var children = await _rdfopQuery('SELECT ?c, ?ord WHERE { ?c <'+_S+'parent> <'+splitId+'> . ?c <'+_S+'order> ?ord }');
     children.sort(function(a,b){ return a['?ord'] < b['?ord'] ? -1 : 1; });
     if (children.length < 2) return;
     var firstChild = children[0]['?c'];
     var secondChild = children[1]['?c'];
-    /* assign: dragged content to the edge side, existing to the other */
     var edgeSel = (zone === 'left' || zone === 'top') ? firstChild : secondChild;
     var otherSel = (zone === 'left' || zone === 'top') ? secondChild : firstChild;
     var del = '', ins = '';
-    /* move dragged content into edge selector */
     if (srcSel) { del += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n'; ins += _sid(edgeSel)+' <'+_S+'selectedNode> '+_sid(srcSel)+' .\n'; del += _sid(srcSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n'; ins += _sid(srcSel)+' <'+_S+'parent> '+_sid(edgeSel)+' .\n'; }
-    /* move existing content into other selector */
     if (tgtSel) { del += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; ins += _sid(otherSel)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n'; ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(otherSel)+' .\n'; }
-    /* target selector now points to the split */
     ins += _sid(tgtP.id)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
     await rdfopSave(del, ins);
-    /* source is now empty — dissolve parent split if applicable */
     await _dissolveEmptySelector(srcP.id);
-    /* only re-render elements still in the DOM (dissolve may have replaced them) */
+  }
+  /* re-render: common ancestor if available, otherwise individual elements */
+  if (_commonAncestorSelector && document.contains(_commonAncestorSelector)) {
+    rdfopSwap(_commonAncestorSelector, 'view');
+  } else {
     if (document.contains(srcEl)) rdfopSwap(srcEl, 'view');
     if (document.contains(target)) rdfopSwap(target, 'view');
   }
