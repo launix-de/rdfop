@@ -63,12 +63,6 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	/* compile and execute rdf */
     (define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
 	/*(print "formula=" formula)*/
-	/* collect all typed subjects for link rendering */
-	(set _typed (newsession))
-	(try (lambda () (begin
-		(define resultrow (lambda (o) (_typed (o "?s") true)))
-		(eval (parse_sparql "rdf" "SELECT ?s WHERE { ?s a ?t }"))
-	)) (lambda (e) nil))
 	(set state (newsession))
 	(set print_header (once (lambda (o) (begin
 		(state "printed" true)
@@ -79,10 +73,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	(define resultrow (lambda (o) (begin
 		(print_header o)
 		(print "<tr>")
-		(map_assoc o (lambda (k v) (if (_typed v)
-			(print "<td><a href='view?id=" (urlencode v) "' onclick='return openOverlayLink(this)'>" (htmlentities v) "</a></td>")
-			(print "<td>" (htmlentities v) "</td>")
-		)))
+		(map_assoc o (lambda (k v) (begin (print "<td>") ((rdf_functions "render_link") v req res) (print "</td>"))))
 		(print "</tr>")
 	)))
 
@@ -127,6 +118,26 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (define formula (_compile_tpl tpl))
         (eval formula)
     )) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
+)))
+
+/* render_link(value, req, res) — CALL render_link(?val, REQ, RES)
+   renders typed entities as clickable links, plain values as text */
+(set _render_link_tpl (parse_rdfhp "rdf" "
+PARAMETER ?value \"value\"
+SELECT ?t WHERE { ?value a ?t } LIMIT 1
+BEGIN
+?><a href='view?id=<?rdf PRINT URL ?value ?>' onclick='return openOverlayLink(this)'><?rdf PRINT HTML ?value ?></a><?rdf
+ELSE
+PRINT HTML ?value
+END
+" (lambda (fn cb) nil)))
+(rdf_functions "render_link" (lambda (value req res) (begin
+    (set _q (newsession))
+    (_q "value" value)
+    (set req (newsession))
+    (req "query" _q)
+    (set print (res "print"))
+    (eval _render_link_tpl)
 )))
 
 /* === Component rendering ===

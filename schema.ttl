@@ -173,8 +173,8 @@ BEGIN
       SELECT ?s, ?o WHERE { ?s a ?o }
       BEGIN
       ?><tr>
-        <td><a href='view?id=<?rdf PRINT URL ?s ?>' onclick='return openOverlayLink(this)'><?rdf PRINT HTML ?s ?></a></td>
-        <td><?rdf PRINT HTML ?o ?></td>
+        <td><?rdf CALL render_link(?s, REQ, RES) ?></td>
+        <td><?rdf CALL render_link(?o, REQ, RES) ?></td>
       </tr><?rdf
       END
       ?>

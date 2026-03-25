@@ -14,15 +14,8 @@ parameter ?s "id"
       SELECT ?p, ?o WHERE {?s ?p ?o}
       BEGIN
         ?><tr>
-          <td><?rdf print html ?p ?></td>
-          <td><?rdf
-            SELECT ?t2 WHERE { ?o a ?t2 }
-            BEGIN
-              ?><a href='view?id=<?rdf print url ?o ?>' onclick="return openOverlayLink(this)"><?rdf print html ?o ?></a><?rdf
-            ELSE
-              print html ?o
-            END
-          ?></td>
+          <td><?rdf CALL render_link(?p, REQ, RES) ?></td>
+          <td><?rdf CALL render_link(?o, REQ, RES) ?></td>
         </tr><?rdf
       ELSE
         ?><tr><td colspan="2" class="empty">No properties found.</td></tr><?rdf
@@ -39,8 +32,8 @@ parameter ?s "id"
       SELECT ?s2, ?p WHERE {?s2 ?p ?s}
       BEGIN
         ?><tr>
-          <td><?rdf print html ?p ?></td>
-          <td><a href='view?id=<?rdf print url ?s2 ?>' onclick="return openOverlayLink(this)"><?rdf print html ?s2 ?></a></td>
+          <td><?rdf CALL render_link(?p, REQ, RES) ?></td>
+          <td><?rdf CALL render_link(?s2, REQ, RES) ?></td>
         </tr><?rdf
       ELSE
         ?><tr><td colspan="2" class="empty">No back edges.</td></tr><?rdf
