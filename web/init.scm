@@ -385,6 +385,25 @@ END
     ))
 )))
 
+/* /view/<id> — render a single object as full page */
+(define http_handler (begin
+    (set _old_handler http_handler)
+    (lambda (req res) (begin
+        (set path (req "path"))
+        (match path (regex "^/view/(.+)" _ id) (begin
+            ((res "header") "Content-Type" "text/html")
+            ((res "status") 200)
+            (set id (urldecode id))
+            (set print (res "print"))
+            (print "<!doctype html><html><head><meta charset='utf-8'><title>")
+            (print (htmlentities id))
+            (print " — RDFOP</title><style>:root{--bg:#f5f7fb;--panel:#fff;--text:#0f172a;--muted:#6b7280;--ring:#e5e7eb}html,body{height:100%;margin:0;font-family:system-ui,sans-serif;color:var(--text)}</style></head><body>")
+            ((rdf_functions "render_object") id req res)
+            (print "</body></html>")
+        ) (_old_handler req res))
+    ))
+))
+
 /* template scipt for subpage */
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content watch)))

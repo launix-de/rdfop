@@ -714,7 +714,7 @@ BEGIN
 ELSE
 ?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='' ondragover='rdfopMoveOver(event,this)' ondragleave='_clearDropClass(this)' ondrop='rdfopMoveDrop(event,this)'>
 <?rdf END ?>
-  <button class='rdfop-selector__move' draggable='true' ondragstart='rdfopMoveStart(event,this)' ondragend='rdfopMoveEnd(event)'>&#x2630;</button>
+  <a class='rdfop-selector__move' href='/view/<?rdf PRINT URL ?sel ?>' draggable='true' ondragstart='rdfopMoveStart(event,this)' ondragend='rdfopMoveEnd(event)' onclick='event.preventDefault()'>&#x2630;</a>
   <button class='rdfop-selector__clear' onclick='event.stopPropagation();rdfopSelectorClear(this)'>&#x2715;</button>
   <?rdf CALL render_object(?sel, REQ, RES) ?>
 </div><?rdf
