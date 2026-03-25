@@ -451,13 +451,13 @@ rdfop:TabGroup_view a rdfop:EditorComponent ;
 window.rdfopTabDirection = window.rdfopTabDirection || function(bar) {
   var tabs = bar.closest('.rdfop-c');
   var p = JSON.parse(tabs.dataset.rdfopParams || '{}');
-  var dirs = ['top','bottom','left','right','leftRotated','rightRotated'];
+  var dirs = {top:'\u2B07 Tabs top',bottom:'\u2B06 Tabs bottom',left:'\u2B95 Tabs left',right:'\u2B05 Tabs right',leftRotated:'\u2935 Tabs left (rotated)',rightRotated:'\u2934 Tabs right (rotated)'};
   var menu = document.createElement('div');
   menu.className = 'rdfop-dir-menu';
   menu.style.cssText = 'position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--ring);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px 0';
-  dirs.forEach(function(d) {
+  Object.keys(dirs).forEach(function(d) {
     var item = document.createElement('div');
-    item.textContent = d;
+    item.textContent = dirs[d];
     item.style.cssText = 'padding:6px 16px;cursor:pointer;white-space:nowrap';
     item.onmouseover = function(){item.style.background='#f1f5f9'};
     item.onmouseout = function(){item.style.background=''};
@@ -475,8 +475,15 @@ window.rdfopTabDirection = window.rdfopTabDirection || function(bar) {
   });
   document.body.appendChild(menu);
   var r = bar.getBoundingClientRect();
-  if (r.width > r.height) { menu.style.left = r.left+'px'; menu.style.top = r.bottom+'px'; }
-  else { menu.style.left = r.right+'px'; menu.style.top = r.top+'px'; }
+  var mw = menu.offsetWidth; var mh = menu.offsetHeight;
+  var vw = window.innerWidth; var vh = window.innerHeight;
+  if (r.width > r.height) {
+    menu.style.left = Math.min(r.left, vw - mw) + 'px';
+    menu.style.top = (r.bottom + mh > vh ? r.top - mh : r.bottom) + 'px';
+  } else {
+    menu.style.left = (r.right + mw > vw ? r.left - mw : r.right) + 'px';
+    menu.style.top = Math.min(r.top, vh - mh) + 'px';
+  }
   var close = function(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',close)}};
   setTimeout(function(){document.addEventListener('click',close)},0);
 };
@@ -537,7 +544,7 @@ window.rdfopTabDrop = async function(e) {
   e.preventDefault();
   var targetTab = e.target.closest('.rdfop-tabs__tab');
   if (!targetTab) return;
-  targetTab.classList.remove('rdfop-tabs__tab--dragover');
+  targetTab.closest('.rdfop-c').querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after')});
   var dragId = e.dataTransfer.getData('text/plain');
   var dropId = targetTab.dataset.tabId;
   if (dragId === dropId) return;
@@ -585,7 +592,10 @@ window.rdfopTabDrop = async function(e) {
 };
 window.rdfopTabDragEnd = function(e) {
   var tab = e.target.closest('.rdfop-tabs__tab');
-  if (tab) tab.classList.remove('rdfop-tabs__tab--dragging');
+  if (tab) {
+    tab.classList.remove('rdfop-tabs__tab--dragging');
+    tab.closest('.rdfop-c').querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after')});
+  }
 };""" ;
   rdfop:css """.rdfop-tabs { display: flex; width: 100%; height: 100%; }
 .rdfop-tabs--top, .rdfop-tabs--bottom { flex-direction: column; }
@@ -596,30 +606,35 @@ window.rdfopTabDragEnd = function(e) {
 .rdfop-tabs--left .rdfop-tabs__bar, .rdfop-tabs--right .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
 .rdfop-tabs--right .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
 .rdfop-tabs--leftRotated .rdfop-tabs__bar, .rdfop-tabs--rightRotated .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
-.rdfop-tabs--leftRotated .rdfop-tabs__tab, .rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-lr; }
+.rdfop-tabs--leftRotated .rdfop-tabs__tab, .rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-rl; transform: rotate(180deg); }
+.rdfop-tabs--leftRotated .rdfop-tabs__dir, .rdfop-tabs--rightRotated .rdfop-tabs__dir { writing-mode: horizontal-tb; transform: none; }
+.rdfop-tabs--leftRotated .rdfop-tabs__add, .rdfop-tabs--rightRotated .rdfop-tabs__add { writing-mode: horizontal-tb; transform: none; }
 .rdfop-tabs--rightRotated .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
 .rdfop-tabs__tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; user-select: none; display: flex; align-items: center; gap: 6px; }
 .rdfop-tabs__tab:hover { background: #e2e8f0; }
 .rdfop-tabs__tab--active { border-bottom-color: #0ea5e9; font-weight: 600; }
 .rdfop-tabs__tab--dragging { opacity: 0.4; }
-.rdfop-tabs__tab--dragover-before { box-shadow: -2px 0 0 0 #0ea5e9 inset; }
-.rdfop-tabs__tab--dragover-after { box-shadow: 2px 0 0 0 #0ea5e9 inset; }
-.rdfop-tabs--left .rdfop-tabs__tab--dragover-before, .rdfop-tabs--right .rdfop-tabs__tab--dragover-before, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-before, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-before { box-shadow: 0 -2px 0 0 #0ea5e9 inset; }
-.rdfop-tabs--left .rdfop-tabs__tab--dragover-after, .rdfop-tabs--right .rdfop-tabs__tab--dragover-after, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-after, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-after { box-shadow: 0 2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs__tab--dragover-before { box-shadow: 2px 0 0 0 #0ea5e9 inset; }
+.rdfop-tabs__tab--dragover-after { box-shadow: -2px 0 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left .rdfop-tabs__tab--dragover-before, .rdfop-tabs--right .rdfop-tabs__tab--dragover-before, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-before, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-before { box-shadow: 0 2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left .rdfop-tabs__tab--dragover-after, .rdfop-tabs--right .rdfop-tabs__tab--dragover-after, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-after, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-after { box-shadow: 0 -2px 0 0 #0ea5e9 inset; }
 .rdfop-tabs__close { display: none; background: none; border: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 0 2px; line-height: 1; }
 .rdfop-tabs__tab:hover .rdfop-tabs__close { display: inline; }
 .rdfop-tabs__close:hover { color: #ef4444; }
+.rdfop-tabs__dir { padding: 8px 8px; cursor: pointer; background: none; border: none; font-size: 14px; color: var(--muted); line-height: 1; }
+.rdfop-tabs__dir:hover { color: var(--text); }
 .rdfop-tabs__add { padding: 8px 12px; cursor: pointer; background: none; border: none; font-size: 16px; color: var(--muted); }
 .rdfop-tabs__add:hover { color: var(--text); }
-.rdfop-tabs__content { flex: 1; overflow: auto; position: relative; }
-.rdfop-tabs__panel { display: none; width: 100%; height: 100%; }
+.rdfop-tabs__content { flex: 1; overflow: hidden; position: relative; }
+.rdfop-tabs__panel { display: none; position: absolute; inset: 0; overflow: auto; }
 .rdfop-tabs__panel--active { display: block; }""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 SELECT ?dir WHERE { ?id rdfop:tabDirection ?dir }
 BEGIN
 ?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-dir='<?rdf PRINT HTML ?dir ?>'>
-  <div class='rdfop-tabs__bar' oncontextmenu='event.preventDefault();rdfopTabDirection(this)'>
+  <div class='rdfop-tabs__bar'>
+    <button class='rdfop-tabs__dir' onclick='rdfopTabDirection(this.closest(&quot;.rdfop-tabs__bar&quot;))'>&#x2B82;</button>
     <?rdf
     SELECT ?tab, ?label, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label } ORDER BY ?ord
     BEGIN
