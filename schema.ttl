@@ -88,7 +88,7 @@ SELECT ?h WHERE { ?id rdfop:html ?h }
 BEGIN
 ?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#html&quot;}'>
   <button class='rdfop-edit-btn' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>&#x270E;</button>
-  <?rdf PRINT RAW ?h ?>
+  <iframe sandbox='allow-scripts' srcdoc='<?rdf PRINT HTML ?h ?>' style='width:100%;height:100%;border:none'></iframe>
 </div><?rdf
 END""" .
 
@@ -308,6 +308,45 @@ BEGIN
     </form>
   </div>
   <div class='rdfop-ttl-results'></div>
+</div><?rdf
+END""" .
+
+# --- Website ---
+rdfop:Website a rdfop:EntityType ; rdfs:label "Website" .
+rdfop:Website rdfop:paletteVisible "true" .
+rdfop:url a rdf:Property ; rdfs:domain rdfop:Website ; rdfs:range rdfs:Literal .
+rdfop:Website rdfop:view rdfop:Website_view .
+
+rdfop:Website_view a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-website { width: 100%; height: 100%; }
+.rdfop-website iframe { width: 100%; height: 100%; border: none; }
+.rdfop-website__setup { padding: 2em; }
+.rdfop-website__setup input { width: 100%; max-width: 500px; padding: 8px 12px; border: 1px solid var(--ring); border-radius: 8px; font: inherit; }""" ;
+  rdfop:js """
+window.rdfopWebsiteSet = async function(btn) {
+  var el = btn.closest('.rdfop-c');
+  var p = JSON.parse(el.dataset.rdfopParams || '{}');
+  var input = el.querySelector('input[name=url]');
+  if (!input || !input.value.trim()) return;
+  var sid = p.id.includes(':') ? '<'+p.id+'>' : p.id;
+  await rdfopSave(null, sid+' <https://launix.de/rdfop/schema#url> '+JSON.stringify(input.value.trim())+' .');
+  rdfopSwap(el, 'view');
+};""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?url WHERE { ?id rdfop:url ?url }
+BEGIN
+?><div class='rdfop-c rdfop-website' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <iframe src='<?rdf PRINT HTML ?url ?>' sandbox='allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox' allow='camera;microphone;display-capture;fullscreen;autoplay'></iframe>
+</div><?rdf
+ELSE
+?><div class='rdfop-c rdfop-website' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <div class='rdfop-website__setup'>
+    <h3>Website</h3>
+    <p>Enter a URL to embed:</p>
+    <input type='url' name='url' placeholder='https://example.com' onkeydown='if(event.key==&quot;Enter&quot;){event.preventDefault();rdfopWebsiteSet(this)}'>
+    <div class='mt-2'><button class='btn primary' type='button' onclick='rdfopWebsiteSet(this)'>Load</button></div>
+  </div>
 </div><?rdf
 END""" .
 
