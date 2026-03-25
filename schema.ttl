@@ -95,7 +95,8 @@ rdfop:HTMLEdit a rdfop:EditorComponent ;
   rdfop:css """.rdfop-edit-toolbar { display: flex; gap: 6px; justify-content: flex-end; padding: 8px 12px 0; }
 .rdfop-edit-toolbar button { background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 16px; }
 .rdfop-edit-toolbar button:hover { background: #f1f5f9; }
-.rdfop-editor { display: block; width: calc(100% - 24px); min-height: 50vh; font-family: monospace; font-size: 13px; border: 1px solid var(--ring); border-radius: 8px; padding: 10px; margin: 8px 12px; resize: vertical; box-sizing: border-box; }""" ;
+.rdfop-c--editing { display: flex; flex-direction: column; height: 100%; }
+.rdfop-editor { flex: 1; width: 100%; font-family: monospace; font-size: 13px; border: none; padding: 10px 12px; resize: none; box-sizing: border-box; outline: none; }""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 PARAMETER ?p "p"
@@ -145,6 +146,132 @@ BEGIN
 ?><span class='rdfop-c rdfop-textedit rdfop-textedit--editing' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'><div class='rdfop-textedit-overlay' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'></div><input type='text' value='<?rdf PRINT HTML ?val ?>' oninput='rdfopTextFit(this)' onkeydown='if(event.key==&quot;Enter&quot;){event.preventDefault();rdfopCommit(this)}if(event.key==&quot;Escape&quot;)rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'></span><?rdf
 END""" .
 
+
+################################################################
+# Tool Components
+################################################################
+
+# --- Explorer ---
+rdfop:Explorer a rdfop:EntityType .
+rdfop:Explorer rdfop:paletteVisible true .
+rdfop:Explorer rdfop:view rdfop:Explorer_view .
+
+rdfop:Explorer_view a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:Explorer }
+BEGIN
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
+  <h2>Knowledge base</h2>
+  <div class='card'>
+    <table class='table'>
+      <tr><th>Object</th><th>Type</th></tr>
+      <?rdf
+      SELECT ?s, ?o WHERE { ?s a ?o }
+      BEGIN
+      ?><tr>
+        <td><a href='view?id=<?rdf PRINT URL ?s ?>' onclick='return openOverlayLink(this)'><?rdf PRINT HTML ?s ?></a></td>
+        <td><?rdf PRINT HTML ?o ?></td>
+      </tr><?rdf
+      END
+      ?>
+    </table>
+  </div>
+  <h3 class='mt-4'>RDF console</h3>
+  <div class='card pad'>
+    <form class='overlay-form' method='POST' action='rdf'>
+      <textarea class='input w-100 h-30vh' name='rdf'>SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea>
+      <div class='mt-2'>
+        <button class='btn primary' type='submit'>Execute</button>
+      </div>
+    </form>
+  </div>
+</div><?rdf
+END""" .
+
+# --- SPARQLConsole ---
+rdfop:SPARQLConsole a rdfop:EntityType .
+rdfop:SPARQLConsole rdfop:paletteVisible true .
+rdfop:SPARQLConsole rdfop:view rdfop:SPARQLConsole_view .
+
+rdfop:SPARQLConsole_view a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-sparql { display:flex; flex-direction:column; height:100%; padding:1em; box-sizing:border-box; }
+.rdfop-sparql__editor { flex-shrink:0; }
+.rdfop-sparql__results { flex:1; overflow:auto; margin-top:1em; }""" ;
+  rdfop:js """
+window.rdfopSparqlExec = async function(btn) {
+  var form = btn.closest('form');
+  var results = form.closest('.rdfop-sparql').querySelector('.rdfop-sparql__results');
+  var body = new URLSearchParams(new FormData(form)).toString();
+  var resp = await fetch('/rdf', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body });
+  results.innerHTML = await resp.text();
+};""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:SPARQLConsole }
+BEGIN
+?><div class='rdfop-c rdfop-sparql' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <div class='rdfop-sparql__editor'>
+    <h3>SPARQL Console</h3>
+    <form>
+      <textarea class='input w-100' name='rdf' style='min-height:15vh' onkeydown='if(event.ctrlKey&amp;&amp;event.key==&quot;Enter&quot;){event.preventDefault();rdfopSparqlExec(this)}'>SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea>
+      <div class='mt-2'>
+        <button class='btn primary' type='button' onclick='rdfopSparqlExec(this)'>Execute</button>
+      </div>
+    </form>
+  </div>
+  <div class='rdfop-sparql__results'></div>
+</div><?rdf
+END""" .
+
+# --- TTLImport ---
+rdfop:TTLImport a rdfop:EntityType .
+rdfop:TTLImport rdfop:paletteVisible true .
+rdfop:TTLImport rdfop:view rdfop:TTLImport_view .
+
+rdfop:TTLImport_view a rdfop:EditorComponent ;
+  rdfop:js """
+window.rdfopTtlImport = async function(btn) {
+  var form = btn.closest('form');
+  var results = form.closest('.rdfop-c').querySelector('.rdfop-ttl-results');
+  var body = new URLSearchParams(new FormData(form)).toString();
+  var resp = await fetch('/ttl-import', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body });
+  results.innerHTML = await resp.text();
+};""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:TTLImport }
+BEGIN
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
+  <h2>TTL import</h2>
+  <p class='muted'>Paste Turtle data below or choose a .ttl file.</p>
+  <div class='card pad'>
+    <form>
+      <textarea class='input w-100 h-30vh' name='ttl' placeholder='@prefix ex: &lt;http://example.com#&gt; .&#10;ex:foo a ex:Thing .'></textarea>
+      <div class='mt-2'>
+        <button class='btn primary' type='button' onclick='rdfopTtlImport(this)'>Import</button>
+      </div>
+    </form>
+  </div>
+  <div class='rdfop-ttl-results'></div>
+</div><?rdf
+END""" .
+
+# --- Settings ---
+rdfop:Settings a rdfop:EntityType .
+rdfop:Settings rdfop:paletteVisible true .
+rdfop:Settings rdfop:view rdfop:Settings_view .
+
+rdfop:Settings_view a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:Settings }
+BEGIN
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
+  <h2>Settings</h2>
+  <p style='color:var(--muted)'>Project configuration will appear here.</p>
+</div><?rdf
+END""" .
 
 ################################################################
 # Layout Components
@@ -219,7 +346,7 @@ BEGIN
 ?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <div class='rdfop-tabs__bar'>
     <?rdf
-    SELECT ?tab, ?label, ?ord WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label . ?tab rdfop:order ?ord } ORDER BY ?ord
+    SELECT ?tab, ?label, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label } ORDER BY ?ord
     BEGIN
     ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' onclick='(function(t){var tabs=t.closest(&quot;.rdfop-tabs&quot;);tabs.querySelectorAll(&quot;.rdfop-tabs__tab&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__tab--active&quot;)});tabs.querySelectorAll(&quot;.rdfop-tabs__panel&quot;).forEach(function(x){x.classList.remove(&quot;rdfop-tabs__panel--active&quot;)});t.classList.add(&quot;rdfop-tabs__tab--active&quot;);var p=tabs.querySelector(&quot;.rdfop-tabs__panel[data-tab-id=\x27&quot;+t.dataset.tabId+&quot;\x27]&quot;);if(p)p.classList.add(&quot;rdfop-tabs__panel--active&quot;)})(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
@@ -231,7 +358,7 @@ BEGIN
   </div>
   <div class='rdfop-tabs__content'>
     <?rdf
-    SELECT ?tab, ?child, ?ord WHERE { ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:children ?child . ?tab rdfop:order ?ord } ORDER BY ?ord
+    SELECT ?tab, ?child, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:children ?child } ORDER BY ?ord
     BEGIN
     ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
     END

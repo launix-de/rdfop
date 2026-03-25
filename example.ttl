@@ -4,14 +4,53 @@
 main a rdfop:TabGroup ;
   rdfop:tabDirection "top" .
 
-# First tab
+# Welcome tab with RDFOP logo and description
 _:tab1 a rdfop:Tab ;
   rdfop:parent main ;
-  rdfop:tabLabel "Welcome" ;
-  rdfop:order "1" ;
+  rdfop:tabLabel "RDFOP" ;
+  rdfop:order "0000000001" ;
   rdfop:children _:hw .
 
-# HTMLView leaf inside the tab
 _:hw a rdfop:HTMLView ;
   rdfop:parent _:tab1 ;
-  rdfop:html "<h1>Hello World</h1><p>Welcome to RDFOP. Click the pencil to edit this content.</p>" .
+  rdfop:html "<div style='padding:2em;max-width:700px;margin:0 auto'><h1 style='font-size:2.5em;margin-bottom:0.2em'>RDFOP</h1><p style='color:#6b7280;font-size:1.1em'>A model-driven low-code framework built on RDF. Define your data model as triples, compose layouts from reusable components, and edit everything inline.</p><p>Click the pencil icon to edit this content, or use the tabs above to explore.</p></div>" .
+
+# Explorer tab
+_:tab2 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "Explorer" ;
+  rdfop:order "0000000002" ;
+  rdfop:children _:expl .
+
+_:expl a rdfop:Explorer ;
+  rdfop:parent _:tab2 .
+
+# Settings tab
+_:tab3 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "Settings" ;
+  rdfop:order "0000000003" ;
+  rdfop:children _:sett .
+
+_:sett a rdfop:Settings ;
+  rdfop:parent _:tab3 .
+
+# SPARQL Console tab
+_:tab4 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "SPARQL" ;
+  rdfop:order "0000000004" ;
+  rdfop:children _:sparql .
+
+_:sparql a rdfop:SPARQLConsole ;
+  rdfop:parent _:tab4 .
+
+# TTL Import tab
+_:tab5 a rdfop:Tab ;
+  rdfop:parent main ;
+  rdfop:tabLabel "TTL Import" ;
+  rdfop:order "0000000005" ;
+  rdfop:children _:ttlimp .
+
+_:ttlimp a rdfop:TTLImport ;
+  rdfop:parent _:tab5 .

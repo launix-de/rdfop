@@ -63,6 +63,12 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	/* compile and execute rdf */
     (define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
 	/*(print "formula=" formula)*/
+	/* collect all typed subjects for link rendering */
+	(set _typed (newsession))
+	(try (lambda () (begin
+		(define resultrow (lambda (o) (_typed (o "?s") true)))
+		(eval (parse_sparql "rdf" "SELECT ?s WHERE { ?s a ?t }"))
+	)) (lambda (e) nil))
 	(set state (newsession))
 	(set print_header (once (lambda (o) (begin
 		(state "printed" true)
@@ -73,7 +79,10 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	(define resultrow (lambda (o) (begin
 		(print_header o)
 		(print "<tr>")
-		(map_assoc o (lambda (k v) (print "<td>" (htmlentities v) "</td>")))
+		(map_assoc o (lambda (k v) (if (_typed v)
+			(print "<td><a href='view?id=" (urlencode v) "' onclick='return openOverlayLink(this)'>" (htmlentities v) "</a></td>")
+			(print "<td>" (htmlentities v) "</td>")
+		)))
 		(print "</tr>")
 	)))
 
@@ -275,16 +284,9 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         ((res "print") "missing parent or type")
     ) (begin
         (set new_id (concat "urn:uuid:" (uuid)))
-        /* compute next order number: find max order among siblings + 1 */
-        (set _max (newsession))
-        (_max "n" 0)
         (set sparql_parent (if (match (concat parent_id) (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
-        (define resultrow (lambda (o) (begin
-            (set v (simplify (coalesce (o "?ord") "0")))
-            (if (> v (_max "n")) (_max "n" v))
-        )))
-        (try (lambda () (eval (parse_sparql "rdf" (concat "SELECT ?ord WHERE { ?c <https://launix.de/rdfop/schema#parent> " sparql_parent " . ?c <https://launix.de/rdfop/schema#order> ?ord }")))) (lambda (e) nil))
-        (set order (+ (_max "n") 1))
+        /* order = unix timestamp so new items sort to the end */
+        (set order (format_date (now) "%Y%m%d%H%i%s"))
         /* build TTL via session to avoid scoping issues */
         (set _t (newsession))
         (_t "ttl" (concat
