@@ -314,6 +314,7 @@ window.rdfopPaletteSelect = async function(btn, selectorId, typeName) {
   rdfopSwap(el, 'view');
 };
 window.rdfopSelectorClear = async function(btn) {
+  if (!confirm('Remove this component?')) return;
   var el = btn.closest('.rdfop-selector--filled');
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
@@ -357,11 +358,17 @@ rdfop:TabGroup rdfop:paletteVisible "true" .
 rdfop:HTMLView rdfop:paletteVisible "true" .
 
 # --- Split ---
-rdfop:Split a rdfop:EntityType ; rdfs:label "Split" .
-rdfop:Split rdfop:paletteVisible "true" .
+rdfop:Split a rdfop:EntityType .
 rdfop:splitDirection a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
 rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
-rdfop:Split rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#splitDirection> "horizontal" .
+rdfop:Split rdfop:view rdfop:Split_view .
+
+# Split palette entries: horizontal and vertical
+rdfop:SplitH a rdfop:EntityType ; rdfs:label "Split \u2194" .
+rdfop:SplitH rdfop:paletteVisible "true" .
+rdfop:SplitH rdfop:view rdfop:Split_view .
+rdfop:SplitH rdfop:initTemplate """$ID a <https://launix.de/rdfop/schema#Split> .
+$ID <https://launix.de/rdfop/schema#splitDirection> "horizontal" .
 $ID <https://launix.de/rdfop/schema#splitRatio> "0.64" .
 $ID <https://launix.de/rdfop/schema#children> _:left .
 $ID <https://launix.de/rdfop/schema#children> _:right .
@@ -372,7 +379,22 @@ _:right a <https://launix.de/rdfop/schema#ComponentSelector> .
 _:right <https://launix.de/rdfop/schema#parent> $ID .
 _:right <https://launix.de/rdfop/schema#order> "2" .
 """ .
-rdfop:Split rdfop:view rdfop:Split_view .
+
+rdfop:SplitV a rdfop:EntityType ; rdfs:label "Split \u2195" .
+rdfop:SplitV rdfop:paletteVisible "true" .
+rdfop:SplitV rdfop:view rdfop:Split_view .
+rdfop:SplitV rdfop:initTemplate """$ID a <https://launix.de/rdfop/schema#Split> .
+$ID <https://launix.de/rdfop/schema#splitDirection> "vertical" .
+$ID <https://launix.de/rdfop/schema#splitRatio> "0.64" .
+$ID <https://launix.de/rdfop/schema#children> _:top .
+$ID <https://launix.de/rdfop/schema#children> _:bottom .
+_:top a <https://launix.de/rdfop/schema#ComponentSelector> .
+_:top <https://launix.de/rdfop/schema#parent> $ID .
+_:top <https://launix.de/rdfop/schema#order> "1" .
+_:bottom a <https://launix.de/rdfop/schema#ComponentSelector> .
+_:bottom <https://launix.de/rdfop/schema#parent> $ID .
+_:bottom <https://launix.de/rdfop/schema#order> "2" .
+""" .
 
 rdfop:Split_view a rdfop:EditorComponent ;
   rdfop:css """.rdfop-split { display: flex; width: 100%; height: 100%; }
@@ -451,7 +473,7 @@ rdfop:TabGroup_view a rdfop:EditorComponent ;
 window.rdfopTabDirection = window.rdfopTabDirection || function(bar) {
   var tabs = bar.closest('.rdfop-c');
   var p = JSON.parse(tabs.dataset.rdfopParams || '{}');
-  var dirs = {top:'\u2B07 Tabs top',bottom:'\u2B06 Tabs bottom',left:'\u2B95 Tabs left',right:'\u2B05 Tabs right',leftRotated:'\u2935 Tabs left (rotated)',rightRotated:'\u2934 Tabs right (rotated)'};
+  var dirs = {top:'\u2B07 Tabs top',bottom:'\u2B06 Tabs bottom',left:'\u2B05 Tabs left',right:'\u2B95 Tabs right',leftRotated:'\u2934 Tabs left (rotated)',rightRotated:'\u2935 Tabs right (rotated)'};
   var menu = document.createElement('div');
   menu.className = 'rdfop-dir-menu';
   menu.style.cssText = 'position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--ring);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px 0';
@@ -606,9 +628,10 @@ window.rdfopTabDragEnd = function(e) {
 .rdfop-tabs--left .rdfop-tabs__bar, .rdfop-tabs--right .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
 .rdfop-tabs--right .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
 .rdfop-tabs--leftRotated .rdfop-tabs__bar, .rdfop-tabs--rightRotated .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
-.rdfop-tabs--leftRotated .rdfop-tabs__tab, .rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-rl; transform: rotate(180deg); }
-.rdfop-tabs--leftRotated .rdfop-tabs__dir, .rdfop-tabs--rightRotated .rdfop-tabs__dir { writing-mode: horizontal-tb; transform: none; }
-.rdfop-tabs--leftRotated .rdfop-tabs__add, .rdfop-tabs--rightRotated .rdfop-tabs__add { writing-mode: horizontal-tb; transform: none; }
+.rdfop-tabs--leftRotated .rdfop-tabs__tab { writing-mode: vertical-rl; }
+.rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-lr; }
+.rdfop-tabs--leftRotated .rdfop-tabs__dir, .rdfop-tabs--rightRotated .rdfop-tabs__dir { writing-mode: horizontal-tb; }
+.rdfop-tabs--leftRotated .rdfop-tabs__add, .rdfop-tabs--rightRotated .rdfop-tabs__add { writing-mode: horizontal-tb; }
 .rdfop-tabs--rightRotated .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
 .rdfop-tabs__tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; user-select: none; display: flex; align-items: center; gap: 6px; }
 .rdfop-tabs__tab:hover { background: #e2e8f0; }
