@@ -294,7 +294,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: body
         });
-        location.reload();
+        await rdfopRefreshCanvas();
       };
 
       window.rdfopRedo = async function() {
@@ -311,7 +311,30 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: body
         });
-        location.reload();
+        await rdfopRefreshCanvas();
+      };
+
+      /* re-render canvas preserving active tabs */
+      window.rdfopRefreshCanvas = async function() {
+        /* save active tab IDs */
+        var activeTabs = Array.from(document.querySelectorAll('.rdfop-tabs__tab--active')).map(function(t){ return t.dataset.tabId; });
+        /* re-render main */
+        var canvas = document.querySelector('.canvas');
+        var resp = await fetch('/rdfop-render?id=main&mode=view');
+        var html = await resp.text();
+        var tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        var node = tpl.content.firstElementChild;
+        canvas.innerHTML = '';
+        canvas.appendChild(node);
+        node.querySelectorAll('script').forEach(function(s){ eval(s.textContent); });
+        /* restore active tabs */
+        activeTabs.forEach(function(id) {
+          var tab = document.querySelector('.rdfop-tabs__tab[data-tab-id="'+id+'"]');
+          if (tab) tab.click();
+        });
+        /* init any new TabGroups */
+        if (window.rdfopTabInit) rdfopTabInit(canvas);
       };
 
       /* Ctrl+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo */
