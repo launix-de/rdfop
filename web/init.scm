@@ -126,7 +126,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 PARAMETER ?value \"value\"
 SELECT ?t WHERE { ?value a ?t } LIMIT 1
 BEGIN
-?><a href='view?id=<?rdf PRINT URL ?value ?>' onclick='return openOverlayLink(this)'><?rdf PRINT HTML ?value ?></a><?rdf
+?><a href='#' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?value ?>}' onclick='event.preventDefault();rdfopOverlay(this)'><?rdf PRINT HTML ?value ?></a><?rdf
 ELSE
 PRINT HTML ?value
 END
@@ -384,12 +384,7 @@ END
 /* template scipt for subpage */
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/" "rdf" content watch)))
 (watch "index.rdfhp" (lambda (content) (rdfop_route "/index" "rdf" content watch)))
-(watch "explorer.rdfhp" (lambda (content) (rdfop_route "/explorer" "rdf" content watch)))
-(watch "settings.rdfhp" (lambda (content) (rdfop_route "/settings" "rdf" content watch)))
-(watch "ttl-import.rdfhp" (lambda (content) (rdfop_route "/ttl-import" "rdf" content watch)))
-(watch "view.rdfhp" (lambda (content) (rdfop_route "/view" "rdf" content watch)))
 (watch "rdf.rdfhp" (lambda (content) (rdfop_route "/rdf" "rdf" content watch)))
-(watch "component.rdfhp" (lambda (content) (rdfop_route "/component" "rdf" content watch)))
 
 /* handcraftet about page */
 (rdfop_routes "/about" (lambda (req res) (begin

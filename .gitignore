@@ -1,3 +1,8 @@
 .*.sw*
 memcp
 data
+concept-fullscreen.md
+concept-self-editor.md
+.memcp-history.tmp
+test_order.scm
+todo

@@ -154,6 +154,53 @@ END""" .
 # Tool Components
 ################################################################
 
+# --- ObjectDetail (entity detail view used by explorer/overlays) ---
+rdfop:ObjectDetail a rdfop:EntityType ; rdfs:label "Object Detail" .
+rdfop:ObjectDetail rdfop:view rdfop:ObjectDetail_view .
+
+rdfop:ObjectDetail_view a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-detail td { white-space: pre-wrap; word-break: break-all; }""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-c rdfop-detail' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
+  <h2>Detail of <?rdf PRINT HTML ?id ?></h2>
+  <h3>Properties</h3>
+  <div class='card'>
+    <table class='table'>
+      <tr><th>Property</th><th>Value</th></tr>
+      <?rdf
+      SELECT ?p, ?o WHERE { ?id ?p ?o }
+      BEGIN
+      ?><tr>
+        <td><?rdf CALL render_link(?p, REQ, RES) ?></td>
+        <td><?rdf CALL render_link(?o, REQ, RES) ?></td>
+      </tr><?rdf
+      ELSE
+      ?><tr><td colspan='2' class='empty'>No properties found.</td></tr><?rdf
+      END
+      ?>
+    </table>
+  </div>
+  <h3 class='mt-4'>Back Edges</h3>
+  <div class='card'>
+    <table class='table'>
+      <tr><th>Property</th><th>Peer-Subject</th></tr>
+      <?rdf
+      SELECT ?s2, ?p WHERE { ?s2 ?p ?id }
+      BEGIN
+      ?><tr>
+        <td><?rdf CALL render_link(?p, REQ, RES) ?></td>
+        <td><?rdf CALL render_link(?s2, REQ, RES) ?></td>
+      </tr><?rdf
+      ELSE
+      ?><tr><td colspan='2' class='empty'>No back edges.</td></tr><?rdf
+      END
+      ?>
+    </table>
+  </div>
+</div><?rdf
+""" .
+
 # --- Explorer ---
 rdfop:Explorer a rdfop:EntityType ; rdfs:label "Explorer" .
 rdfop:Explorer rdfop:paletteVisible "true" .

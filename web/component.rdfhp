@@ -1,8 +1,0 @@
-@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
-
-parameter ?id "id"
-
-?><div class="component-view">
-  <?rdf CALL render_component(?id, REQ, RES) ?>
-</div>
-
