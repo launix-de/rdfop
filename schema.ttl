@@ -540,8 +540,8 @@ window.rdfopMoveDrop = async function(e, el) {
       if (tgtSel) { del += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; ins += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n'; ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n'; }
       await rdfopSave(del, ins);
       /* source or target may now be empty — dissolve parent splits */
-      if (srcSel && !tgtSel) await _dissolveEmptySelector(srcP.id);
-      if (tgtSel && !srcSel) await _dissolveEmptySelector(tgtP.id);
+      if (srcSel && !tgtSel) await _dissolveEmptySelector(srcP.id, true);
+      if (tgtSel && !srcSel) await _dissolveEmptySelector(tgtP.id, true);
     } else {
       /* both filled: swap parent + order of the content nodes */
       var srcSelOrd = await _rdfopQuery('SELECT ?ord WHERE { <'+srcSel+'> <'+_S+'order> ?ord }');
@@ -580,9 +580,9 @@ window.rdfopMoveDrop = async function(e, el) {
     if (tgtSel) { del += _sid(tgtP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; ins += _sid(otherSel)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n'; del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(tgtP.id)+' .\n'; ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(otherSel)+' .\n'; }
     ins += _sid(tgtP.id)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
     await rdfopSave(del, ins);
-    await _dissolveEmptySelector(srcP.id);
+    await _dissolveEmptySelector(srcP.id, true);
   }
-  /* re-render: common ancestor if available, otherwise individual elements */
+  /* single re-render: common ancestor or individual elements */
   if (_commonAncestorSelector && document.contains(_commonAncestorSelector)) {
     rdfopSwap(_commonAncestorSelector, 'view');
   } else {
@@ -604,14 +604,15 @@ window._rdfopQuery = async function(sparql) {
   }); return result;
 };
 /* single function for dissolving empty selectors — used by [x] button AND after drag-out */
-window._dissolveEmptySelector = async function(selectorId) {
+/* dissolve: data-only, returns gpId for caller to re-render. noRender=true skips DOM updates */
+window._dissolveEmptySelector = async function(selectorId, noRender) {
   var parents = await _rdfopQuery('SELECT ?parent, ?ptype WHERE { <'+selectorId+'> <'+_S+'parent> ?parent . ?parent a ?ptype }');
-  if (!parents.length) return;
+  if (!parents.length) return null;
   var parentId = parents[0]['?parent'];
   var parentType = parents[0]['?ptype'];
   if (parentType === _S+'Split') {
     var splitParents = await _rdfopQuery('SELECT ?gp WHERE { <'+parentId+'> <'+_S+'parent> ?gp }');
-    if (!splitParents.length) return;
+    if (!splitParents.length) return null;
     var gpId = splitParents[0]['?gp'];
     var siblings = await _rdfopQuery('SELECT ?sib, ?sibSel WHERE { ?sib <'+_S+'parent> <'+parentId+'> . ?sib <'+_S+'selectedNode> ?sibSel }');
     var sibContent = siblings.length ? siblings[0]['?sibSel'] : null;
@@ -624,13 +625,15 @@ window._dissolveEmptySelector = async function(selectorId) {
     }
     await rdfopSave(del, ins);
     await fetch('/rdfop-delete', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'id='+encodeURIComponent(parentId) });
-    var gpEl = document.querySelector('[data-rdfop-params*=\'"id":"'+gpId+'"\']');
-    if (gpEl) rdfopSwap(gpEl, 'view');
+    if (!noRender) { var gpEl = document.querySelector('[data-rdfop-params*=\'"id":"'+gpId+'"\']'); if (gpEl) rdfopSwap(gpEl, 'view'); }
+    return gpId;
   } else if (parentType === _S+'Tab') {
     var tabEl = document.querySelector('.rdfop-tabs__tab[data-tab-id="'+parentId+'"]');
     if (tabEl) rdfopDelete(tabEl);
     else { await fetch('/rdfop-delete', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'id='+encodeURIComponent(parentId) }); }
+    return parentId;
   }
+  return null;
 };
 window.rdfopPaletteRemove = async function(btn) {
   var el = btn.closest('.rdfop-palette');
@@ -839,10 +842,14 @@ window.rdfopDelete = window.rdfopDelete || async function(tabEl) {
   if (!confirm('Delete tab "' + tabName + '"?')) return;
   var tabId = tabEl.dataset.tabId;
   var tabs = tabEl.closest('.rdfop-c');
-  var allTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
-  var idx = allTabs.indexOf(tabEl);
-  var nextIdx = idx < allTabs.length - 1 ? idx + 1 : idx - 1;
-  var nextTabId = nextIdx >= 0 ? allTabs[nextIdx].dataset.tabId : null;
+  var wasActive = tabEl.classList.contains('rdfop-tabs__tab--active');
+  var nextTabId = null;
+  if (wasActive) {
+    var allTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
+    var idx = allTabs.indexOf(tabEl);
+    var nextIdx = idx < allTabs.length - 1 ? idx + 1 : idx - 1;
+    nextTabId = nextIdx >= 0 ? allTabs[nextIdx].dataset.tabId : null;
+  }
   await fetch('/rdfop-delete', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -852,7 +859,7 @@ window.rdfopDelete = window.rdfopDelete || async function(tabEl) {
   p.mode = 'view';
   var r = await fetch('/rdfop-render?' + new URLSearchParams(p));
   tabs.outerHTML = await r.text();
-  setTimeout(function(){ var t = nextTabId ? document.querySelector('.rdfop-tabs__tab[data-tab-id=\"'+nextTabId+'\"]') : document.querySelector('.rdfop-tabs__tab'); if(t) t.click(); }, 0);
+  if (wasActive) { setTimeout(function(){ var t = nextTabId ? document.querySelector('.rdfop-tabs__tab[data-tab-id=\"'+nextTabId+'\"]') : document.querySelector('.rdfop-tabs__tab'); if(t) rdfopTabSwitch(t); }, 0); }
 };
 /* auto-activate first tab in newly rendered TabGroups */
 window._rdfopActiveTabs = JSON.parse(localStorage.getItem('rdfop-active-tabs') || '{}');
