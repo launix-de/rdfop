@@ -411,16 +411,6 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         } catch(e) { console.error('rdfopCreate', e); }
       };
 
-      // Auto-activate first tab on page load
-      setTimeout(function() {
-        document.querySelectorAll('.rdfop-tabs').forEach(function(tabs) {
-          if (!tabs.querySelector('.rdfop-tabs__tab--active')) {
-            var first = tabs.querySelector('.rdfop-tabs__tab');
-            if (first) rdfopTabSwitch(first);
-          }
-        });
-      }, 0);
-
     })();
   </script>
   <script>

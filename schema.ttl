@@ -342,13 +342,12 @@ rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:r
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
 
 rdfop:ComponentSelector_view a rdfop:EditorComponent ;
-  rdfop:css """.rdfop-palette { display: flex; flex-wrap: wrap; gap: 12px; padding: 1em; align-content: flex-start; }
+  rdfop:css """.rdfop-palette { display: flex; flex-wrap: wrap; gap: 12px; padding: 1em; align-content: flex-start; position: relative; min-height: 40px; }
 .rdfop-palette__item { background: var(--panel); border: 1px solid var(--ring); border-radius: 10px; padding: 16px 20px; cursor: pointer; min-width: 120px; text-align: center; transition: box-shadow .15s, transform .15s; }
 .rdfop-palette__item:hover { box-shadow: 0 4px 12px rgba(2,6,23,.12); transform: translateY(-2px); }
 .rdfop-palette__remove { position: absolute; top: 4px; right: 4px; background: var(--panel); border: 1px solid var(--ring); border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 20px; text-align: center; z-index: 10; opacity: 0; transition: opacity .15s; color: var(--muted); }
 .rdfop-palette:hover > .rdfop-palette__remove { opacity: 1; }
 .rdfop-palette__remove:hover { color: #ef4444; border-color: #ef4444; }
-.rdfop-palette { position: relative; }
 .rdfop-selector--filled { position: relative; width: 100%; height: 100%; }
 .rdfop-selector__move { position: absolute; top: 4px; right: 30px; background: var(--panel); border: 1px solid var(--ring); border-radius: 50%; width: 22px; height: 22px; cursor: grab; font-size: 12px; line-height: 20px; text-align: center; z-index: 10; opacity: 0; transition: opacity .15s; }
 .rdfop-selector__clear { position: absolute; top: 4px; right: 4px; background: var(--panel); border: 1px solid var(--ring); border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 20px; text-align: center; z-index: 10; opacity: 0; transition: opacity .15s; }
@@ -833,7 +832,8 @@ window.rdfopTabInit = function(el) {
     if (tab) rdfopTabSwitch(tab);
   });
 };
-document.addEventListener('DOMContentLoaded', function(){ rdfopTabInit(document); });
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ rdfopTabInit(document); });
+else rdfopTabInit(document);
 /* tab reorder via drag & drop */
 window.rdfopTabDragStart = function(e) {
   var tab = e.target.closest('.rdfop-tabs__tab');
@@ -943,8 +943,8 @@ window.rdfopTabDragEnd = function(e) {
 .rdfop-tabs__dir:hover { color: var(--text); }
 .rdfop-tabs__add { padding: 8px 12px; cursor: pointer; background: none; border: none; font-size: 16px; color: var(--muted); }
 .rdfop-tabs__add:hover { color: var(--text); }
-.rdfop-tabs__content { flex: 1; overflow: hidden; position: relative; }
-.rdfop-tabs__panel { display: none; position: absolute; inset: 0; overflow: auto; }
+.rdfop-tabs__content { flex: 1; overflow: auto; position: relative; min-height: 0; }
+.rdfop-tabs__panel { display: none; width: 100%; height: 100%; }
 .rdfop-tabs__panel--active { display: block; }""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
