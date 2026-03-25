@@ -284,9 +284,13 @@ rdfop:TTLImport_view a rdfop:EditorComponent ;
 window.rdfopTtlImport = async function(btn) {
   var form = btn.closest('form');
   var results = form.closest('.rdfop-c').querySelector('.rdfop-ttl-results');
-  var body = new URLSearchParams(new FormData(form)).toString();
-  var resp = await fetch('/ttl-import', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body });
-  results.innerHTML = await resp.text();
+  var ttl = form.querySelector('textarea[name=ttl]').value;
+  if (!ttl || !ttl.trim()) { results.innerHTML = '<div style="border-left:4px solid #f59e0b;padding:8px 12px">No TTL provided.</div>'; return; }
+  try {
+    var resp = await fetch('/rdfop-save', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'insert=' + encodeURIComponent(ttl) });
+    if (resp.ok) results.innerHTML = '<div style="border-left:4px solid #059669;padding:8px 12px">Imported TTL successfully.</div>';
+    else results.innerHTML = '<div style="border-left:4px solid #b91c1c;padding:8px 12px">Import error: ' + (await resp.text()) + '</div>';
+  } catch(e) { results.innerHTML = '<div style="border-left:4px solid #b91c1c;padding:8px 12px">Import error: ' + e.message + '</div>'; }
 };""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
@@ -780,22 +784,22 @@ window.rdfopTabDragEnd = function(e) {
 .rdfop-tabs--right, .rdfop-tabs--rightRotated { flex-direction: row-reverse; }
 .rdfop-tabs--bottom { flex-direction: column-reverse; }
 .rdfop-tabs__bar { display: flex; gap: 0; background: #f1f5f9; border-bottom: 1px solid var(--ring); padding: 0 8px; flex-shrink: 0; }
-.rdfop-tabs--left .rdfop-tabs__bar, .rdfop-tabs--right .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
-.rdfop-tabs--right .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
-.rdfop-tabs--leftRotated .rdfop-tabs__bar, .rdfop-tabs--rightRotated .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
-.rdfop-tabs--leftRotated .rdfop-tabs__tab, .rdfop-tabs--rightRotated .rdfop-tabs__tab { writing-mode: vertical-lr; padding: 8px 2px; gap: 2px; display: block; text-align: center; }
-.rdfop-tabs--leftRotated .rdfop-tabs__tab { transform: rotate(180deg); }
-.rdfop-tabs--leftRotated .rdfop-tabs__dir, .rdfop-tabs--rightRotated .rdfop-tabs__dir { writing-mode: horizontal-tb; }
-.rdfop-tabs--leftRotated .rdfop-tabs__add, .rdfop-tabs--rightRotated .rdfop-tabs__add { writing-mode: horizontal-tb; }
-.rdfop-tabs--rightRotated .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
+.rdfop-tabs--left > .rdfop-tabs__bar, .rdfop-tabs--right > .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
+.rdfop-tabs--right > .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar, .rdfop-tabs--rightRotated > .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__tab { writing-mode: vertical-lr; padding: 8px 2px; gap: 2px; display: block; text-align: center; }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab { transform: rotate(180deg); }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__dir, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__dir { writing-mode: horizontal-tb; }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__add, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__add { writing-mode: horizontal-tb; }
+.rdfop-tabs--rightRotated > .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
 .rdfop-tabs__tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; user-select: none; display: flex; align-items: center; gap: 6px; }
 .rdfop-tabs__tab:hover { background: #e2e8f0; }
 .rdfop-tabs__tab--active { border-bottom-color: #0ea5e9; font-weight: 600; }
 .rdfop-tabs__tab--dragging { opacity: 0.4; }
 .rdfop-tabs__tab--dragover-before { box-shadow: 2px 0 0 0 #0ea5e9 inset; }
 .rdfop-tabs__tab--dragover-after { box-shadow: -2px 0 0 0 #0ea5e9 inset; }
-.rdfop-tabs--left .rdfop-tabs__tab--dragover-before, .rdfop-tabs--right .rdfop-tabs__tab--dragover-before, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-before, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-before { box-shadow: 0 2px 0 0 #0ea5e9 inset; }
-.rdfop-tabs--left .rdfop-tabs__tab--dragover-after, .rdfop-tabs--right .rdfop-tabs__tab--dragover-after, .rdfop-tabs--leftRotated .rdfop-tabs__tab--dragover-after, .rdfop-tabs--rightRotated .rdfop-tabs__tab--dragover-after { box-shadow: 0 -2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before, .rdfop-tabs--right > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before, .rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before { box-shadow: 0 2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after, .rdfop-tabs--right > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after, .rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after { box-shadow: 0 -2px 0 0 #0ea5e9 inset; }
 .rdfop-tabs__close { display: none; background: none; border: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 0 2px; line-height: 1; }
 .rdfop-tabs__tab:hover .rdfop-tabs__close { display: inline; }
 .rdfop-tabs__close:hover { color: #ef4444; }
