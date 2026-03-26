@@ -9,7 +9,8 @@ PARAMETER ?id "id"
 <style>
   :root { --bg: #f5f7fb; --panel: #ffffff; --text: #0f172a; --muted: #6b7280; --ring:#e5e7eb; }
   html, body { height: 100%; margin: 0; background: var(--bg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color: var(--text); }
-  .canvas { position: absolute; inset: 0; }
+  .canvas { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; }
+  .canvas > * { flex: 1 1 auto; min-width: 0; min-height: 0; width: 100%; height: 100%; }
   .card { background: var(--panel); border: 1px solid var(--ring); border-radius: 12px; box-shadow: 0 8px 24px rgba(2,6,23,.08); overflow: hidden; }
   .table { width: 100%; border-collapse: collapse; }
   .table th { background: #f8fafc; font-weight: 600; color: #0f172a; text-align: left; }
@@ -247,6 +248,137 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         return false;
       };
 
+      window.rdfopViewHref = function(id) {
+        return location.origin + '/view/' + encodeURIComponent(id);
+      };
+
+      window.rdfopSid = function(id) {
+        return String(id || '').includes(':') ? '<' + id + '>' : id;
+      };
+
+      window._rdfopQuery = async function(sparql) {
+        var resp = await fetch('/rdf', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'rdf=' + encodeURIComponent(sparql)
+        });
+        var html = await resp.text();
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var result = [];
+        doc.querySelectorAll('tbody tr').forEach(function(r) {
+          var row = {};
+          var ths = doc.querySelectorAll('thead th');
+          r.querySelectorAll('td').forEach(function(td, i) {
+            var a = td.querySelector('a');
+            var val = a ? a.textContent.trim() : td.textContent.trim();
+            row[ths[i] ? ths[i].textContent.trim() : i] = val;
+          });
+          result.push(row);
+        });
+        return result;
+      };
+
+      window.__rdfopDragSession = null;
+
+      window.rdfopDragNormalizeUri = function(raw) {
+        if (!raw) return null;
+        try {
+          return new URL(String(raw).trim(), location.href).toString();
+        } catch (e) {
+          return null;
+        }
+      };
+
+      window.rdfopDragReadUri = function(e) {
+        if (!e || !e.dataTransfer) return null;
+        var raw = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '';
+        if (!raw) return null;
+        raw = String(raw).split('\n').find(function(line) {
+          return line && line[0] !== '#';
+        }) || '';
+        return window.rdfopDragNormalizeUri(raw);
+      };
+
+      window.rdfopDragReadViewIdFromUri = function(uri) {
+        var normalized = window.rdfopDragNormalizeUri(uri);
+        if (!normalized) return null;
+        try {
+          var parsed = new URL(normalized);
+          if (parsed.origin !== location.origin) return null;
+          var m = parsed.pathname.match(/^\/view\/(.+)$/);
+          return m ? decodeURIComponent(m[1]) : null;
+        } catch (e) {
+          return null;
+        }
+      };
+
+      window.rdfopDragReadViewId = function(e) {
+        return window.rdfopDragReadViewIdFromUri(window.rdfopDragReadUri(e));
+      };
+
+      window.rdfopDragReadKind = function(e) {
+        if (!e || !e.dataTransfer) return null;
+        return e.dataTransfer.getData('application/x-rdfop-kind') || null;
+      };
+
+      window.rdfopDragHasLocalSource = function(uri) {
+        var normalized = window.rdfopDragNormalizeUri(uri);
+        return !!(normalized && window.__rdfopDragSession && window.__rdfopDragSession.uri === normalized);
+      };
+
+      window.rdfopDragStartLink = function(e, link, meta){
+        var uri = window.rdfopDragNormalizeUri(
+          (link && link.href) || (link && link.getAttribute && link.getAttribute('href')) || ''
+        );
+        if (!uri || !e || !e.dataTransfer) return null;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/uri-list', uri);
+        e.dataTransfer.setData('text/plain', uri);
+        e.dataTransfer.setData('application/x-rdfop-kind', (meta && meta.kind) || 'component');
+        window.__rdfopDragSession = {
+          uri: uri,
+          handleSameWindowDrop: meta && meta.handleSameWindowDrop ? meta.handleSameWindowDrop : null
+        };
+        rdfopCoverIframes();
+        document.dispatchEvent(new CustomEvent('rdfop:externalDragStart', {detail: {uri: uri}}));
+        return uri;
+      };
+
+      window.rdfopDragFinish = async function(uri, result) {
+        var normalized = window.rdfopDragNormalizeUri(uri);
+        var session = window.__rdfopDragSession;
+        if (!normalized || !session || session.uri !== normalized) return false;
+        try {
+          if (session.handleSameWindowDrop) await session.handleSameWindowDrop(result || {});
+        } finally {
+          window.__rdfopDragSession = null;
+          rdfopUncoverIframes();
+          document.dispatchEvent(new CustomEvent('rdfop:externalDragEnd', {detail: {uri: normalized}}));
+        }
+        return true;
+      };
+
+      window.rdfopDragClear = function() {
+        if (!window.__rdfopDragSession) return;
+        window.__rdfopDragSession = null;
+        rdfopUncoverIframes();
+        document.dispatchEvent(new CustomEvent('rdfop:externalDragEnd'));
+      };
+
+      window.rdfopCoverIframes = function() {
+        document.querySelectorAll('iframe').forEach(function(f) {
+          var cover = document.createElement('div');
+          cover.className = 'rdfop-iframe-cover';
+          cover.style.cssText = 'position:absolute;inset:0;z-index:5;';
+          f.parentElement.style.position = f.parentElement.style.position || 'relative';
+          f.parentElement.appendChild(cover);
+        });
+      };
+
+      window.rdfopUncoverIframes = function() {
+        document.querySelectorAll('.rdfop-iframe-cover').forEach(function(c) { c.remove(); });
+      };
+
       /*
        * === RDFOP Component Framework ===
        *
@@ -344,7 +476,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           if (tab) tab.click();
         });
         /* init any new TabGroups */
-        if (window.rdfopTabInit) rdfopTabInit(canvas);
+        if (window.rdfopTabsInit) rdfopTabsInit(canvas);
       };
 
       /* Ctrl+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo */
@@ -369,7 +501,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           var te = node.querySelector('.rdfop-textedit--editing input');
           if (te) { if (window.rdfopTextFit) rdfopTextFit(te); te.focus(); te.select(); }
           /* init TabGroups + Splits in new content */
-          if (window.rdfopTabInit) rdfopTabInit(node);
+          if (window.rdfopTabsInit) rdfopTabsInit(node);
         } catch(e) { console.error('rdfopSwap', e); }
       };
 

@@ -1,0 +1,15 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+
+rdfop:schema rdfop:include "components/schema.ttl" .
+rdfop:schema rdfop:include "components/html-view.ttl" .
+rdfop:schema rdfop:include "components/text-edit.ttl" .
+rdfop:schema rdfop:include "components/object-detail.ttl" .
+rdfop:schema rdfop:include "components/explorer.ttl" .
+rdfop:schema rdfop:include "components/sparql-console.ttl" .
+rdfop:schema rdfop:include "components/ttl-import.ttl" .
+rdfop:schema rdfop:include "components/website.ttl" .
+rdfop:schema rdfop:include "components/browser.ttl" .
+rdfop:schema rdfop:include "components/settings.ttl" .
+rdfop:schema rdfop:include "components/component-selector.ttl" .
+rdfop:schema rdfop:include "components/split.ttl" .
+rdfop:schema rdfop:include "components/tab.ttl" .

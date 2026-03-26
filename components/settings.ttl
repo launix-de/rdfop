@@ -1,0 +1,22 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# Settings
+################################################################
+
+rdfop:Settings a rdfop:EntityType ; rdfs:label "Settings" .
+rdfop:Settings rdfop:paletteVisible "true" .
+rdfop:Settings rdfop:view rdfop:Settings_view .
+
+rdfop:Settings_view a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:Settings }
+BEGIN
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
+  <h2>Settings</h2>
+  <p style='color:var(--muted)'>Project configuration will appear here.</p>
+</div><?rdf
+END""" .

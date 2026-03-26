@@ -1,0 +1,43 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# TTLImport
+################################################################
+
+rdfop:TTLImport a rdfop:EntityType ; rdfs:label "TTL Import" .
+rdfop:TTLImport rdfop:paletteVisible "true" .
+rdfop:TTLImport rdfop:view rdfop:TTLImport_view .
+
+rdfop:TTLImport_view a rdfop:EditorComponent ;
+  rdfop:js """
+window.rdfopTtlImport = async function(btn) {
+  var form = btn.closest('form');
+  var results = form.closest('.rdfop-c').querySelector('.rdfop-ttl-results');
+  var ttl = form.querySelector('textarea[name=ttl]').value;
+  if (!ttl || !ttl.trim()) { results.innerHTML = '<div style="border-left:4px solid #f59e0b;padding:8px 12px">No TTL provided.</div>'; return; }
+  try {
+    var resp = await fetch('/rdfop-save', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'insert=' + encodeURIComponent(ttl) });
+    if (resp.ok) results.innerHTML = '<div style="border-left:4px solid #059669;padding:8px 12px">Imported TTL successfully.</div>';
+    else results.innerHTML = '<div style="border-left:4px solid #b91c1c;padding:8px 12px">Import error: ' + (await resp.text()) + '</div>';
+  } catch(e) { results.innerHTML = '<div style="border-left:4px solid #b91c1c;padding:8px 12px">Import error: ' + e.message + '</div>'; }
+};""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:TTLImport }
+BEGIN
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
+  <h2>TTL import</h2>
+  <p class='muted'>Paste Turtle data below or choose a .ttl file.</p>
+  <div class='card pad'>
+    <form>
+      <textarea class='input w-100 h-30vh' name='ttl' placeholder='@prefix ex: &lt;http://example.com#&gt; .&#10;ex:foo a ex:Thing .'></textarea>
+      <div class='mt-2'>
+        <button class='btn primary' type='button' onclick='rdfopTtlImport(this)'>Import</button>
+      </div>
+    </form>
+  </div>
+  <div class='rdfop-ttl-results'></div>
+</div><?rdf
+END""" .

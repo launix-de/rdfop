@@ -29,16 +29,67 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (createdatabase "rdf" true)
 (createtable "rdf" "rdf" '('("column" "s" "text" '() '()) '("column" "p" "text" '() '()) '("column" "o" "text" '() '()) '("unique" "u" '("s" "p" "o"))) '() true)
 
-/* schema.ttl: watch + hot-reload (delete old triples, insert new) */
+/* schema: watch + hot-reload with rdfop:include support */
+(set schema_file (arg "schema" "../components.ttl"))
+(set _schema_dir (path schema_file "..")) /* directory containing the schema file */
+(set _include_watchers (newsession)) /* map: filename -> old ttl content */
+
+/* deploy a file watcher: watch file, on change delete old triples + insert new */
+(define _deploy_include_watcher (lambda (filename) (begin
+    (set filepath (path _schema_dir filename))
+    (if (not (nil? (_include_watchers filename))) nil /* already watching */
+        (begin
+            (_include_watchers filename "")
+            (watch filepath (lambda (content) (begin
+                (set old (_include_watchers filename))
+                (if (and (not (nil? old)) (not (equal? old "")))
+                    (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "include delete error (" filename "): " e)))
+                )
+                (try (lambda () (begin (load_ttl "rdf" content) (_include_watchers filename content) (print filename " reloaded")))
+                     (lambda (e) (print filename " load error: " e)))
+            )))
+            (print "watching " filename)
+        )
+    )
+)))
+
+/* remove a watcher: delete its triples from the store */
+(define _remove_include (lambda (filename) (begin
+    (set old (_include_watchers filename))
+    (if (and (not (nil? old)) (not (equal? old "")))
+        (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "include remove error (" filename "): " e)))
+    )
+    (_include_watchers filename nil)
+    (print "unwatched " filename)
+)))
+
+/* load the main schema file (components.ttl) with watch + hot-reload */
 (set _schema_old (newsession))
-(watch "../schema.ttl" (lambda (content) (begin
+(watch schema_file (lambda (content) (begin
     (set old (_schema_old "ttl"))
     (if (not (nil? old))
         (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "schema delete error: " e)))
     )
-    (try (lambda () (begin (load_ttl "rdf" content) (_schema_old "ttl" content) (print "schema.ttl reloaded")))
-         (lambda (e) (print "schema.ttl load error: " e)))
+    (try (lambda () (begin (load_ttl "rdf" content) (_schema_old "ttl" content) (print schema_file " reloaded")))
+         (lambda (e) (print schema_file " load error: " e)))
+    /* scan for rdfop:include triples and deploy watchers */
+    (scan "rdf" "rdf" '("p" "o") (lambda (p o) (equal? p "https://launix.de/rdfop/schema#include")) '("o") (lambda (o) (_deploy_include_watcher o)) (lambda (a b) b) nil)
 )))
+
+/* triggers: manage include watchers at runtime */
+(droptrigger "rdf" "rdfop_include_insert" true)
+(createtrigger "rdf" "rdf" "rdfop_include_insert" "after_insert" "" (lambda (old new)
+    (if (equal? (new "p") "https://launix.de/rdfop/schema#include")
+        (_deploy_include_watcher (new "o"))
+    )
+) false)
+
+(droptrigger "rdf" "rdfop_include_delete" true)
+(createtrigger "rdf" "rdf" "rdfop_include_delete" "after_delete" "" (lambda (old new)
+    (if (equal? (old "p") "https://launix.de/rdfop/schema#include")
+        (_remove_include (old "o"))
+    )
+) false)
 
 /* example.ttl: only load if database is empty (no user data yet) */
 (set _has_data (newsession))
@@ -127,7 +178,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (set sparql_id (if (match (concat entity_id) (regex ":" _) true false) (concat "<" entity_id ">") entity_id))
     (set _rc (newsession))
     (try (lambda () (begin
-        (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
+        (define resultrow (lambda (row) (_rc "tpl" (row "?tpl"))))
         (eval (parse_sparql "rdf" (concat
             "SELECT ?tpl WHERE { " sparql_id " a ?type . ?type <https://launix.de/rdfop/schema#" action_name "> ?tpl } LIMIT 1"
         )))
@@ -179,7 +230,7 @@ END
     (set sparql_comp (if (match (concat comp_iri) (regex ":" _) true false) (concat "<" comp_iri ">") comp_iri))
     (set _rc (newsession))
     (try (lambda () (begin
-        (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
+        (define resultrow (lambda (row) (_rc "tpl" (row "?tpl"))))
         (eval (parse_sparql "rdf" (concat
             "SELECT ?tpl WHERE { " sparql_comp " <https://launix.de/rdfop/schema#componentTemplate> ?tpl }"
         )))
@@ -200,7 +251,7 @@ END
     /* find component: ?type <mode_predicate> ?component where id a ?type */
     (set mode_pred (concat "<https://launix.de/rdfop/schema#" mode ">"))
     (try (lambda () (begin
-        (define resultrow (lambda (o) (_rc "comp" (o "?comp"))))
+        (define resultrow (lambda (row) (_rc "comp" (row "?comp"))))
         (eval (parse_sparql "rdf" (concat
             "SELECT ?comp WHERE { " sparql_id " a ?type . ?type " mode_pred " ?comp }"
         )))

@@ -1,0 +1,77 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+################################################################
+# RDFOP Final Self-Describing Schema
+################################################################
+
+# Classes
+rdfop:EntityType a rdfs:Class .
+rdfop:Attribute a rdfs:Class .
+rdfop:EditorComponent a rdfs:Class .
+rdfop:Method a rdfs:Class .
+
+# Methods (public actions callable via /{method}/{id})
+rdfop:view a rdfop:Method .
+rdfop:edit a rdfop:Method .
+rdfop:onChildRemoved a rdfop:Method .
+rdfop:CodeGenerator a rdfs:Class .
+rdfop:Expr a rdfs:Class .
+rdfop:Parameter a rdfs:Class .
+rdfop:ChangeSet a rdfs:Class .
+rdfop:Tenant a rdfs:Class .
+# TODO: rdfop:Enum
+
+# TODO: owl:cardinality 1 for required attributes
+# TODO: owl:minCardinality 1 for required multi-attributes
+# TODO: owl:maxCardinality 1 for optional attributes
+# TODO: schema verifier inside the transaction
+
+# Entity / Attribute definitions
+rdfop:hasAttribute a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfop:Attribute .
+rdfop:attrName a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal .
+rdfop:attrType a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Resource . # reference to type or datatype
+rdfop:cardinality a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal . # "0..1", "1", "0..n"
+rdfop:attrKind a rdf:Property ; rdfs:domain rdfop:Attribute ; rdfs:range rdfs:Literal .
+rdfop:recursiveDelete a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
+
+# Editor components
+/* view/edit predicates link EntityType → EditorComponent: e.g. rdfop:HTMLView rdfop:view rdfop:HTMLView_view */
+rdfop:view a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfop:EditorComponent .
+rdfop:edit a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfop:EditorComponent .
+rdfop:componentTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFHP template string
+rdfop:parameters a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # parameters required to instantiate
+rdfop:input a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # RDFJSON query for data + provenance
+rdfop:inputVariable a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # bind JSON to this variable name
+rdfop:initTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # JSON object for new items
+rdfop:css a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # CSS styles for this component
+rdfop:js a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal .
+rdfop:onChildRemoved a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal . # RDFHP snippet: ?id=parent, ?child=removed child # JS code for this component
+
+# Code Generators
+rdfop:handlesNodeType a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfop:EntityType .
+rdfop:language a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal .
+rdfop:template a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfs:Literal .
+
+# Expressions (TODO: add more Classes: ExprConstant, ExprUnaryOperator, ExprBinaryOperator and diversify)
+rdfop:operator a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal .
+rdfop:left a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdf:Resource .
+rdfop:right a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdf:Resource .
+rdfop:value a rdf:Property ; rdfs:domain rdfop:Expr ; rdfs:range rdfs:Literal .
+
+# Shared properties
+rdfop:url a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
+
+# Labels and localization
+rdfs:label a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
+
+################################################################
+# Runtime View Components (bootstrap)
+################################################################
+
+# Property to map a type to a view function name
+rdfop:viewFunction a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .
+rdfop:viewTemplate a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal .

@@ -1,0 +1,524 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# Tab + TabGroup
+################################################################
+
+# --- Tab ---
+rdfop:Tab a rdfop:EntityType .
+rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
+rdfop:Tab rdfop:onChildRemoved """
+PARAMETER ?child "child"
+SELECT ?gone WHERE { ?id rdfop:children ?child }
+BEGIN
+  DELETE { ?id rdfop:children ?child }
+  SELECT ?p, ?o WHERE { ?child ?p ?o } BEGIN DELETE { ?child ?p ?o } END
+END
+SELECT ?tabgroup WHERE { ?tabgroup rdfop:children ?id }
+BEGIN
+  DELETE { ?tabgroup rdfop:children ?id }
+  SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+  CALL rdfop_action("onChildRemoved", ?tabgroup, "child", ?id)
+END
+""" .
+rdfop:Tab rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#tabLabel> "New Tab" .
+$ID <https://launix.de/rdfop/schema#children> _:child .
+_:child a <https://launix.de/rdfop/schema#ComponentSelector> .
+""" .
+
+# TabGroup components
+rdfop:TabGroup rdfop:onChildRemoved """
+PARAMETER ?child "child"
+SELECT ?tab WHERE { ?id rdfop:children ?tab }
+BEGIN
+ELSE
+  SELECT ?parent WHERE { ?parent rdfop:selectedNode ?id }
+  BEGIN
+    DELETE { ?parent rdfop:selectedNode ?id }
+    DELETE { ?parent rdfop:children ?id }
+    SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+    CALL rdfop_action("onChildRemoved", ?parent, "child", ?id)
+  END
+END
+""" .
+rdfop:TabGroup rdfop:view rdfop:TabGroup_view .
+
+rdfop:TabGroup_view a rdfop:EditorComponent ;
+  rdfop:js """
+window.rdfopTabsSchema = 'https://launix.de/rdfop/schema#';
+window.rdfopTabsReadDraggedTabId = function(e) {
+  if (!e || !e.dataTransfer) return null;
+  return e.dataTransfer.getData('application/x-rdfop-tab-id') || null;
+};
+window.rdfopTabsReadDraggedTabGroup = function(e) {
+  if (!e || !e.dataTransfer) return null;
+  return e.dataTransfer.getData('application/x-rdfop-tab-group') || null;
+};
+window.rdfopTabsCanReorderInto = function(e, tabs) {
+  if (!e || !tabs) return false;
+  var dragTabId = rdfopTabsReadDraggedTabId(e);
+  var dragGroupId = rdfopTabsReadDraggedTabGroup(e);
+  var dropGroupId = JSON.parse(tabs.dataset.rdfopParams || '{}').id;
+  return !!(dragTabId && dragGroupId && dropGroupId && dragGroupId === dropGroupId);
+};
+window.rdfopTabsSetLabel = async function(tabId, nextLabel) {
+  if (!tabId || !nextLabel) return;
+  await rdfopSave(
+    '<' + tabId + '> <https://launix.de/rdfop/schema#tabLabel> "New Tab" .',
+    '<' + tabId + '> <https://launix.de/rdfop/schema#tabLabel> ' + JSON.stringify(nextLabel) + ' .'
+  );
+};
+window.rdfopTabsGuessLabel = async function(contentId) {
+  if (!contentId) return null;
+  var labels = await _rdfopQuery('SELECT ?label WHERE { <' + contentId + '> a ?type . ?type <http://www.w3.org/2000/01/rdf-schema#label> ?label }');
+  return labels.length && labels[0]['?label'] ? labels[0]['?label'] : null;
+};
+window.rdfopTabsBindNewTabContent = async function(newTabId, contentId) {
+  var children = await _rdfopQuery('SELECT ?c WHERE { <' + newTabId + '> <https://launix.de/rdfop/schema#children> ?c }');
+  if (!children.length) return null;
+  var autoSelectorId = children[0]['?c'];
+  var types = await _rdfopQuery('SELECT ?t WHERE { <' + contentId + '> a ?t }');
+  var isSelector = types.some(function(row) {
+    return row['?t'] === window.rdfopTabsSchema + 'ComponentSelector';
+  });
+  if (isSelector) {
+    await rdfopSave(
+      '<' + newTabId + '> <https://launix.de/rdfop/schema#children> ' + rdfopSid(autoSelectorId) + ' .\n' +
+      rdfopSid(autoSelectorId) + ' a <https://launix.de/rdfop/schema#ComponentSelector> .',
+      '<' + newTabId + '> <https://launix.de/rdfop/schema#children> ' + rdfopSid(contentId) + ' .'
+    );
+    return {selectorId: contentId, contentId: contentId};
+  }
+  await rdfopSave(
+    null,
+    rdfopSid(autoSelectorId) + ' <https://launix.de/rdfop/schema#selectedNode> ' + rdfopSid(contentId) + ' .\n' +
+    rdfopSid(autoSelectorId) + ' <https://launix.de/rdfop/schema#children> ' + rdfopSid(contentId) + ' .\n'
+  );
+  return {selectorId: autoSelectorId, contentId: contentId};
+};
+window.rdfopTabsRefreshAfterSourceCleanup = async function(tab) {
+  var tabs = tab && tab.closest ? tab.closest('.rdfop-tabs') : null;
+  if (tabs && document.contains(tabs)) {
+    await rdfopSwap(tabs, 'view');
+    return;
+  }
+  await rdfopRefreshCanvas();
+};
+window.rdfopTabsHandleSameWindowDrop = async function(tab, result) {
+  if (!tab || (result && result.reordered)) return;
+  var tabId = tab.dataset.tabId;
+  var childId = tab.dataset.childId;
+  var contentId = tab.dataset.contentId || childId;
+  if (!tabId || !childId || !contentId) return;
+  if (contentId === childId) {
+    await fetch('/onChildRemoved/' + encodeURIComponent(tabId) + '?child=' + encodeURIComponent(childId));
+  } else {
+    await fetch('/onChildRemoved/' + encodeURIComponent(childId) + '?child=' + encodeURIComponent(contentId));
+  }
+  await rdfopTabsRefreshAfterSourceCleanup(tab);
+};
+window.rdfopTabsPersistOrder = async function(tabs, orderedIds) {
+  if (!tabs || !orderedIds || !orderedIds.length) return;
+  var allTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
+  var base = Date.now();
+  for (var i = 0; i < orderedIds.length; i++) {
+    var id = orderedIds[i];
+    var sid = rdfopSid(id);
+    var tabEl = allTabs.find(function(t) { return t.dataset.tabId === id; });
+    var oldOrd = tabEl ? tabEl.dataset.tabOrder : null;
+    var newOrd = String(base + i);
+    if (oldOrd && oldOrd !== newOrd) {
+      await rdfopSave(
+        sid + ' <https://launix.de/rdfop/schema#order> ' + JSON.stringify(oldOrd) + ' .',
+        sid + ' <https://launix.de/rdfop/schema#order> ' + JSON.stringify(newOrd) + ' .'
+      );
+    }
+  }
+};
+window.rdfopTabsDirection = function(bar) {
+  var tabs = bar.closest('.rdfop-c');
+  var p = JSON.parse(tabs.dataset.rdfopParams || '{}');
+  var dirs = {top:'\u2B06 Tabs top',bottom:'\u2B07 Tabs bottom',left:'\u2B05 Tabs left',right:'\u2B95 Tabs right',leftRotated:'\u2934 Tabs left (rotated)',rightRotated:'\u2935 Tabs right (rotated)'};
+  var menu = document.createElement('div');
+  menu.className = 'rdfop-dir-menu';
+  menu.style.cssText = 'position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--ring);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px 0';
+  Object.keys(dirs).forEach(function(d) {
+    var item = document.createElement('div');
+    item.textContent = dirs[d];
+    item.style.cssText = 'padding:6px 16px;cursor:pointer;white-space:nowrap';
+    item.onmouseover = function(){item.style.background='#f1f5f9'};
+    item.onmouseout = function(){item.style.background=''};
+    item.onclick = async function() {
+      var sid = rdfopSid(p.id);
+      var oldDir = tabs.dataset.rdfopDir || 'top';
+      await rdfopSave(
+        sid + ' <https://launix.de/rdfop/schema#tabDirection> ' + JSON.stringify(oldDir) + ' .',
+        sid + ' <https://launix.de/rdfop/schema#tabDirection> ' + JSON.stringify(d) + ' .'
+      );
+      menu.remove();
+      var activeTabId = (tabs.querySelector('.rdfop-tabs__tab--active') || {}).dataset;
+      activeTabId = activeTabId ? activeTabId.tabId : null;
+      await rdfopSwap(tabs, 'view');
+      if (activeTabId) {
+        var t = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + activeTabId + '"]');
+        if (t) t.click();
+      }
+    };
+    menu.appendChild(item);
+  });
+  document.body.appendChild(menu);
+  var r = bar.getBoundingClientRect();
+  var mw = menu.offsetWidth;
+  var mh = menu.offsetHeight;
+  var vw = window.innerWidth;
+  var vh = window.innerHeight;
+  if (r.width > r.height) {
+    menu.style.left = Math.min(r.left, vw - mw) + 'px';
+    menu.style.top = (r.bottom + mh > vh ? r.top - mh : r.bottom) + 'px';
+  } else {
+    menu.style.left = (r.right + mw > vw ? r.left - mw : r.right) + 'px';
+    menu.style.top = Math.min(r.top, vh - mh) + 'px';
+  }
+  var close = function(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',close)}};
+  setTimeout(function(){document.addEventListener('click',close)},0);
+};
+window.rdfopTabClose = async function(tabEl) {
+  var tabName = tabEl.querySelector('.rdfop-textedit') ? tabEl.querySelector('.rdfop-textedit').textContent.trim() : 'tab';
+  if (!confirm('Delete tab "' + tabName + '"?')) return;
+  var tabId = tabEl.dataset.tabId;
+  var tabs = tabEl.closest('.rdfop-c');
+  var panel = tabs.querySelector(':scope > .rdfop-tabs__content > .rdfop-tabs__panel[data-tab-id="' + tabId + '"]');
+  var childId = panel ? panel.dataset.childId : null;
+  var wasActive = tabEl.classList.contains('rdfop-tabs__tab--active');
+  var allTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
+  var idx = allTabs.indexOf(tabEl);
+  var nextIdx = idx < allTabs.length - 1 ? idx + 1 : idx - 1;
+  var nextTabId = nextIdx >= 0 ? allTabs[nextIdx].dataset.tabId : null;
+  var url = '/onChildRemoved/' + encodeURIComponent(tabId);
+  if (childId) url += '?child=' + encodeURIComponent(childId);
+  await fetch(url);
+  if (allTabs.length <= 1) {
+    tabs.dispatchEvent(new CustomEvent('rdfop:layoutChildRemoved', {bubbles: true}));
+    return;
+  }
+  await rdfopSwap(tabs, 'view');
+  if (wasActive) {
+    setTimeout(function() {
+      var t = nextTabId ? document.querySelector('.rdfop-tabs__tab[data-tab-id="' + nextTabId + '"]') : document.querySelector('.rdfop-tabs__tab');
+        if (t) rdfopTabsSwitch(t);
+    }, 0);
+  }
+};
+window._rdfopActiveTabs = JSON.parse(localStorage.getItem('rdfop-active-tabs') || '{}');
+window.rdfopTabsSwitch = function(t) {
+  var tabs = t.closest('.rdfop-tabs');
+  tabs.querySelectorAll(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab').forEach(function(x){x.classList.remove('rdfop-tabs__tab--active')});
+  tabs.querySelectorAll(':scope > .rdfop-tabs__content > .rdfop-tabs__panel').forEach(function(x){x.classList.remove('rdfop-tabs__panel--active')});
+  t.classList.add('rdfop-tabs__tab--active');
+  var p = tabs.querySelector(':scope > .rdfop-tabs__content > .rdfop-tabs__panel[data-tab-id="' + t.dataset.tabId + '"]');
+  if (p) p.classList.add('rdfop-tabs__panel--active');
+  var gid = JSON.parse(tabs.dataset.rdfopParams || '{}').id;
+  if (gid) {
+    _rdfopActiveTabs[gid] = t.dataset.tabId;
+    localStorage.setItem('rdfop-active-tabs', JSON.stringify(_rdfopActiveTabs));
+  }
+};
+window.rdfopTabsInit = function(el) {
+  var tabgroups = el.querySelectorAll ? Array.from(el.querySelectorAll('.rdfop-tabs')) : Array.from(document.querySelectorAll('.rdfop-tabs'));
+  if (el.classList && el.classList.contains('rdfop-tabs')) tabgroups.unshift(el);
+  tabgroups.forEach(function(t) {
+    t.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after,.rdfop-tabs__tab--dragging').forEach(function(d){
+      d.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after','rdfop-tabs__tab--dragging');
+    });
+    t.querySelectorAll('.rdfop-tabs__bar--drop-target').forEach(function(d){ d.classList.remove('rdfop-tabs__bar--drop-target'); });
+    if (t.querySelector(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab--active')) return;
+    var gid = JSON.parse(t.dataset.rdfopParams || '{}').id;
+    var saved = gid ? _rdfopActiveTabs[gid] : null;
+    var tab = saved ? t.querySelector(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab[data-tab-id="' + saved + '"]') : null;
+    if (!tab) tab = t.querySelector(':scope > .rdfop-tabs__bar > .rdfop-tabs__tab');
+    if (tab) rdfopTabsSwitch(tab);
+  });
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ rdfopTabsInit(document); });
+else rdfopTabsInit(document);
+document.addEventListener('rdfop:layoutChildRemoved', function(e) {
+  if (e.target.closest('.rdfop-split')) return;
+  var tabs = e.target.closest('.rdfop-tabs');
+  if (tabs) rdfopSwap(tabs, 'view');
+});
+window.rdfopTabsEnableExternalHover = function() {
+  document.querySelectorAll('.rdfop-tabs__tab').forEach(function(tab) {
+    tab.addEventListener('dragover', rdfopTabsHoverDuringExternalDrag);
+  });
+};
+window.rdfopTabsDisableExternalHover = function() {
+  document.querySelectorAll('.rdfop-tabs__tab').forEach(function(tab) {
+    tab.removeEventListener('dragover', rdfopTabsHoverDuringExternalDrag);
+    clearTimeout(tab._rdfopHoverTimer);
+    tab._rdfopHoverTimer = null;
+  });
+};
+window.rdfopTabsHoverDuringExternalDrag = function(e) {
+  var tab = e.currentTarget;
+  if (!tab._rdfopHoverTimer) tab._rdfopHoverTimer = setTimeout(function(){
+    tab._rdfopHoverTimer = null;
+    rdfopTabsSwitch(tab);
+  }, 800);
+};
+document.addEventListener('rdfop:externalDragStart', function() {
+  rdfopTabsEnableExternalHover();
+});
+document.addEventListener('rdfop:externalDragEnd', function() {
+  document.querySelectorAll('.rdfop-tabs__bar').forEach(function(bar) {
+    bar.classList.remove('rdfop-tabs__bar--drop-target');
+  });
+  document.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(tab) {
+    tab.classList.remove('rdfop-tabs__tab--dragover-before', 'rdfop-tabs__tab--dragover-after');
+  });
+  rdfopTabsDisableExternalHover();
+});
+window.rdfopTabsBarDropPosition = function(e, bar) {
+  var allTabs = Array.from(bar.querySelectorAll('.rdfop-tabs__tab'));
+  if (!allTabs.length) return {after: null};
+  var tabs = bar.closest('.rdfop-c');
+  var isVert = tabs && (tabs.classList.contains('rdfop-tabs--left') || tabs.classList.contains('rdfop-tabs--right') || tabs.classList.contains('rdfop-tabs--leftRotated') || tabs.classList.contains('rdfop-tabs--rightRotated'));
+  for (var i = 0; i < allTabs.length; i++) {
+    var rect = allTabs[i].getBoundingClientRect();
+    var mid = isVert ? (rect.top + rect.height / 2) : (rect.left + rect.width / 2);
+    var pos = isVert ? e.clientY : e.clientX;
+    if (pos < mid) return {before: allTabs[i]};
+  }
+  return {after: allTabs[allTabs.length - 1]};
+};
+window.rdfopTabsBarDragOver = function(e, bar) {
+  if (rdfopTabsCanReorderInto(e, bar.closest('.rdfop-c'))) return;
+  if (rdfopDragReadKind(e) !== 'component') return;
+  e.preventDefault();
+  e.stopPropagation();
+  bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
+    t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
+  });
+  var pos = rdfopTabsBarDropPosition(e, bar);
+  if (pos.before) pos.before.classList.add('rdfop-tabs__tab--dragover-before');
+  else if (pos.after) pos.after.classList.add('rdfop-tabs__tab--dragover-after');
+  else bar.classList.add('rdfop-tabs__bar--drop-target');
+};
+window.rdfopTabsBarDrop = async function(e, bar) {
+  e.preventDefault();
+  e.stopPropagation();
+  bar.classList.remove('rdfop-tabs__bar--drop-target');
+  bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
+    t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
+  });
+  var tabs = bar.closest('.rdfop-c');
+  if (rdfopTabsCanReorderInto(e, tabs)) {
+    var dragTabId = rdfopTabsReadDraggedTabId(e);
+    if (!dragTabId) return;
+    var allExistingTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
+    var orderedIds = allExistingTabs.map(function(tab) { return tab.dataset.tabId; }).filter(function(id) { return id !== dragTabId; });
+    orderedIds.push(dragTabId);
+    await rdfopTabsPersistOrder(tabs, orderedIds);
+    await rdfopSwap(tabs, 'view');
+    setTimeout(function() {
+      var active = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + dragTabId + '"]');
+      if (active) rdfopTabsSwitch(active);
+    }, 0);
+    return;
+  }
+  if (rdfopDragReadKind(e) !== 'component') return;
+  var uri = rdfopDragReadUri(e);
+  var contentId = uri ? rdfopDragReadViewIdFromUri(uri) : null;
+  if (!contentId) return;
+  var tabGroupP = JSON.parse(tabs.dataset.rdfopParams || '{}');
+  var pos = rdfopTabsBarDropPosition(e, bar);
+  var refTab = pos.before || pos.after;
+  var refOrder = refTab ? refTab.dataset.tabOrder : null;
+  var resp = await fetch('/rdfop-create', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'parent=' + encodeURIComponent(tabGroupP.id) + '&type=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23Tab'
+  });
+  if (!resp.ok) return;
+  var newTabId = (await resp.text()).trim();
+  if (refOrder) {
+    var allTabs = Array.from(bar.querySelectorAll('.rdfop-tabs__tab'));
+    var orders = allTabs.map(function(t){ return t.dataset.tabOrder; }).sort();
+    var refIdx = orders.indexOf(refOrder);
+    var newOrd;
+    if (pos.before) {
+      var prev = refIdx > 0 ? orders[refIdx - 1] : '0';
+      newOrd = String(Math.floor((parseInt(prev, 10) + parseInt(refOrder, 10)) / 2));
+      if (newOrd === prev || newOrd === refOrder) newOrd = prev + '5';
+    } else {
+      newOrd = String(parseInt(refOrder, 10) + 1);
+    }
+    var oldOrd = await _rdfopQuery('SELECT ?o WHERE { <' + newTabId + '> <https://launix.de/rdfop/schema#order> ?o }');
+    if (oldOrd.length && oldOrd[0]['?o']) {
+      await rdfopSave(
+        '<' + newTabId + '> <https://launix.de/rdfop/schema#order> ' + JSON.stringify(oldOrd[0]['?o']) + ' .',
+        '<' + newTabId + '> <https://launix.de/rdfop/schema#order> ' + JSON.stringify(newOrd) + ' .'
+      );
+    }
+  }
+  var embedded = await rdfopTabsBindNewTabContent(newTabId, contentId);
+  if (!embedded) return;
+  var sourceLabel = e.dataTransfer ? (e.dataTransfer.getData('application/x-rdfop-tab-label') || '').trim() : '';
+  var nextLabel = sourceLabel || await rdfopTabsGuessLabel(embedded.contentId);
+  if (nextLabel) {
+    await rdfopTabsSetLabel(newTabId, nextLabel);
+  }
+  await rdfopDragFinish(uri, {});
+  await rdfopSwap(tabs, 'view');
+  setTimeout(function() {
+    var t = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + newTabId + '"]');
+    if (t) rdfopTabsSwitch(t);
+  }, 0);
+};
+window.rdfopTabsReorderStart = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (!tab) return;
+  var tabs = tab.closest('.rdfop-tabs');
+  var groupId = tabs ? JSON.parse(tabs.dataset.rdfopParams || '{}').id : null;
+  rdfopDragStartLink(e, tab, {
+    kind: 'component',
+    handleSameWindowDrop: async function(result) {
+      await rdfopTabsHandleSameWindowDrop(tab, result || {});
+    }
+  });
+  if (!e.dataTransfer) return;
+  e.dataTransfer.setData('application/x-rdfop-tab-id', tab.dataset.tabId || '');
+  e.dataTransfer.setData('application/x-rdfop-tab-group', groupId || '');
+  var label = tab.querySelector('.rdfop-textedit');
+  e.dataTransfer.setData('application/x-rdfop-tab-label', label ? label.textContent.trim() : '');
+  tab.classList.add('rdfop-tabs__tab--dragging');
+};
+window.rdfopTabsReorderOver = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (!tab) return;
+  var tabs = tab.closest('.rdfop-c');
+  if (!rdfopTabsCanReorderInto(e, tabs)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  tab.classList.remove('rdfop-tabs__tab--dragover-before', 'rdfop-tabs__tab--dragover-after');
+  var rect = tab.getBoundingClientRect();
+  var isVert = tabs.classList.contains('rdfop-tabs--left') || tabs.classList.contains('rdfop-tabs--right') || tabs.classList.contains('rdfop-tabs--leftRotated') || tabs.classList.contains('rdfop-tabs--rightRotated');
+  var mid = isVert ? (rect.top + rect.height / 2) : (rect.left + rect.width / 2);
+  var pos = isVert ? e.clientY : e.clientX;
+  tab.classList.add(pos > mid ? 'rdfop-tabs__tab--dragover-after' : 'rdfop-tabs__tab--dragover-before');
+};
+window.rdfopTabsReorderLeave = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (tab) tab.classList.remove('rdfop-tabs__tab--dragover-before', 'rdfop-tabs__tab--dragover-after');
+};
+window.rdfopTabsReorderDrop = async function(e) {
+  var targetTab = e.target.closest('.rdfop-tabs__tab');
+  if (!targetTab) return;
+  var tabs = targetTab.closest('.rdfop-c');
+  if (!rdfopTabsCanReorderInto(e, tabs)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  tabs.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
+    t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
+  });
+  var dragId = rdfopTabsReadDraggedTabId(e);
+  var dropId = targetTab.dataset.tabId;
+  if (!dragId || dragId === dropId) return;
+  var allTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
+  var rect = targetTab.getBoundingClientRect();
+  var isVert = tabs.classList.contains('rdfop-tabs--left') || tabs.classList.contains('rdfop-tabs--right') || tabs.classList.contains('rdfop-tabs--leftRotated') || tabs.classList.contains('rdfop-tabs--rightRotated');
+  var mid = isVert ? (rect.top + rect.height / 2) : (rect.left + rect.width / 2);
+  var pos = isVert ? e.clientY : e.clientX;
+  var insertAfter = pos > mid;
+  var ids = allTabs.map(function(t){ return t.dataset.tabId; }).filter(function(id){ return id !== dragId; });
+  var dropIdx = ids.indexOf(dropId);
+  ids.splice(insertAfter ? dropIdx + 1 : dropIdx, 0, dragId);
+  await rdfopTabsPersistOrder(tabs, ids);
+  await rdfopSwap(tabs, 'view');
+  setTimeout(function() {
+    var t = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + dragId + '"]');
+    if (t) rdfopTabsSwitch(t);
+  }, 0);
+};
+window.rdfopTabsReorderEnd = function(e) {
+  var tab = e.target.closest('.rdfop-tabs__tab');
+  if (tab) {
+    tab.classList.remove('rdfop-tabs__tab--dragging');
+    tab.closest('.rdfop-c').querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
+      t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
+    });
+  }
+  rdfopDragClear();
+};""" ;
+  rdfop:css """.rdfop-tabs { display: flex; width: 100%; height: 100%; }
+.rdfop-tabs--top, .rdfop-tabs--bottom { flex-direction: column; }
+.rdfop-tabs--left, .rdfop-tabs--leftRotated { flex-direction: row; }
+.rdfop-tabs--right, .rdfop-tabs--rightRotated { flex-direction: row-reverse; }
+.rdfop-tabs--bottom { flex-direction: column-reverse; }
+.rdfop-tabs__bar { display: flex; gap: 0; background: #f1f5f9; border-bottom: 1px solid var(--ring); padding: 0 8px; flex-shrink: 0; }
+.rdfop-tabs__bar--drop-target { background: rgba(14,165,233,.15); outline: 2px dashed #0ea5e9; }
+.rdfop-tabs--left > .rdfop-tabs__bar, .rdfop-tabs--right > .rdfop-tabs__bar { flex-direction: column; width: 180px; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
+.rdfop-tabs--right > .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar, .rdfop-tabs--rightRotated > .rdfop-tabs__bar { flex-direction: column; border-bottom: none; border-right: 1px solid var(--ring); padding: 8px 0; }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__tab { writing-mode: vertical-lr; padding: 8px 2px; gap: 2px; display: block; text-align: center; }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab { transform: rotate(180deg); }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__dir, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__dir { writing-mode: horizontal-tb; }
+.rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__add, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__add { writing-mode: horizontal-tb; }
+.rdfop-tabs--rightRotated > .rdfop-tabs__bar { border-right: none; border-left: 1px solid var(--ring); }
+.rdfop-tabs__tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; user-select: none; display: flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; position: relative; }
+.rdfop-tabs__tab:hover { background: #e2e8f0; }
+.rdfop-tabs__tab--active { border-bottom-color: #0ea5e9; font-weight: 600; }
+.rdfop-tabs__tab--dragging { opacity: 0.4; }
+.rdfop-tabs__tab--dragover-before { box-shadow: 2px 0 0 0 #0ea5e9 inset; }
+.rdfop-tabs__tab--dragover-after { box-shadow: -2px 0 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before, .rdfop-tabs--right > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before, .rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-before { box-shadow: 0 2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs--left > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after, .rdfop-tabs--right > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after, .rdfop-tabs--leftRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after, .rdfop-tabs--rightRotated > .rdfop-tabs__bar > .rdfop-tabs__tab--dragover-after { box-shadow: 0 -2px 0 0 #0ea5e9 inset; }
+.rdfop-tabs__close { display: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 0 2px; line-height: 1; }
+.rdfop-tabs__tab:hover .rdfop-tabs__close { display: inline; }
+.rdfop-tabs__close:hover { color: #ef4444; }
+.rdfop-tabs__dir { padding: 8px 8px; cursor: pointer; background: none; border: none; font-size: 14px; color: var(--muted); line-height: 1; }
+.rdfop-tabs__dir:hover { color: var(--text); }
+.rdfop-tabs__add { padding: 8px 12px; cursor: pointer; background: none; border: none; font-size: 16px; color: var(--muted); }
+.rdfop-tabs__add:hover { color: var(--text); }
+.rdfop-tabs__content { flex: 1; overflow: auto; position: relative; min-height: 0; }
+.rdfop-tabs__panel { display: none; width: 100%; height: 100%; }
+.rdfop-tabs__panel--active { display: flex; flex-direction: column; }
+.rdfop-tabs__panel--active > * { flex: 1; min-height: 0; }""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dir WHERE { ?id rdfop:tabDirection ?dir }
+BEGIN
+?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-dir='<?rdf PRINT HTML ?dir ?>'>
+  <div class='rdfop-tabs__bar' ondragover='rdfopTabsBarDragOver(event,this)' ondrop='rdfopTabsBarDrop(event,this)'>
+    <button class='rdfop-tabs__dir' onclick='rdfopTabsDirection(this.closest(&quot;.rdfop-tabs__bar&quot;))'>&#x2B82;</button>
+    <?rdf
+    SELECT ?tab, ?label, ?ord, ?child WHERE { ?id rdfop:children ?tab . ?tab rdfop:order ?ord . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label . ?tab rdfop:children ?child } ORDER BY ?ord
+    BEGIN
+    ?><?rdf SELECT ?selected WHERE { ?child rdfop:selectedNode ?selected }
+    BEGIN
+    ?><a class='rdfop-tabs__tab' href='/view/<?rdf PRINT URL ?selected ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?selected ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
+      <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
+      <span class='rdfop-tabs__close' onclick='event.preventDefault();event.stopPropagation();rdfopTabClose(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</span>
+    </a><?rdf
+    ELSE
+    ?><a class='rdfop-tabs__tab' href='/view/<?rdf PRINT URL ?child ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?child ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
+      <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
+      <span class='rdfop-tabs__close' onclick='event.preventDefault();event.stopPropagation();rdfopTabClose(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</span>
+    </a><?rdf
+    END ?><?rdf
+    END
+    ?>
+    <button class='rdfop-tabs__add' onclick='rdfopCreate(this,&quot;<?rdf PRINT HTML ?id ?>&quot;,&quot;https://launix.de/rdfop/schema#Tab&quot;)'>+</button>
+  </div>
+  <div class='rdfop-tabs__content'>
+    <?rdf
+    SELECT ?tab, ?child, ?ord WHERE { ?id rdfop:children ?tab . ?tab rdfop:order ?ord . ?tab a rdfop:Tab . ?tab rdfop:children ?child } ORDER BY ?ord
+    BEGIN
+    ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-child-id='<?rdf PRINT HTML ?child ?>'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
+    END
+    ?>
+  </div>
+</div>
+<?rdf
+END""" .

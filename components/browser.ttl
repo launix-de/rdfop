@@ -1,0 +1,415 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# Browser
+################################################################
+
+rdfop:Browser a rdfop:EntityType ; rdfs:label "Browser" .
+rdfop:Browser rdfop:paletteVisible "true" .
+rdfop:Browser rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#url> "https://example.com" .
+""" .
+
+rdfop:Browser rdfop:view rdfop:Browser_view .
+
+rdfop:Browser_view a rdfop:EditorComponent ;
+  rdfop:css """
+.rdfop-browser {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--panel, #fff);
+}
+.rdfop-browser__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--ring, #cbd5e1);
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+.rdfop-browser__btn {
+  border: 1px solid var(--ring, #cbd5e1);
+  background: white;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.rdfop-browser__btn:hover { background: #f1f5f9; }
+.rdfop-browser__btn[disabled] { opacity: .45; cursor: default; }
+.rdfop-browser__url {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--ring, #cbd5e1);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  background: white;
+}
+.rdfop-browser__meta {
+  color: var(--muted, #64748b);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.rdfop-browser__viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: white;
+}
+.rdfop-browser__frame,
+.rdfop-browser__webview,
+.rdfop-browser__placeholder {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.rdfop-browser__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted, #64748b);
+  background: #f8fafc;
+}
+.rdfop-browser__hint {
+  padding: 16px 20px;
+  max-width: 780px;
+  line-height: 1.5;
+}
+.rdfop-browser--electron .rdfop-browser__meta::after {
+  content: " · Electron";
+}
+.rdfop-browser--web .rdfop-browser__meta::after {
+  content: " · Browser";
+}
+""" ;
+  rdfop:js """
+window.rdfopBrowserNormalizeUrl = function(raw) {
+  raw = String(raw || '').trim();
+  if (!raw) return '';
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return raw;
+  if (raw.startsWith('//')) return window.location.protocol + raw;
+  return 'https://' + raw;
+};
+
+window.rdfopBrowserIsElectron = function() {
+  try {
+    if (window.runtimeInfo && window.runtimeInfo.isElectron) return true;
+    if (window.electronAPI && (window.electronAPI.browser || window.electronAPI.isElectron)) return true;
+    if (window.process && window.process.type === 'renderer') return true;
+    if (navigator.userAgent && navigator.userAgent.indexOf('Electron') !== -1) return true;
+  } catch (e) {}
+  return false;
+};
+
+window.rdfopBrowserPersistUrl = async function(root, url) {
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  if (!p.id || !url) return;
+  var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
+  var oldUrl = root.dataset.currentUrl || '';
+  if (oldUrl === url) return;
+  root.dataset.currentUrl = url;
+  try {
+    if (oldUrl) {
+      await rdfopSave(
+        sid + ' <https://launix.de/rdfop/schema#url> ' + JSON.stringify(oldUrl) + ' .',
+        sid + ' <https://launix.de/rdfop/schema#url> ' + JSON.stringify(url) + ' .'
+      );
+    } else {
+      await rdfopSave(
+        null,
+        sid + ' <https://launix.de/rdfop/schema#url> ' + JSON.stringify(url) + ' .'
+      );
+    }
+  } catch (e) {
+    console.warn('Could not persist browser URL', e);
+  }
+};
+
+window.rdfopBrowserSetMeta = function(root, text) {
+  var meta = root.querySelector('.rdfop-browser__meta');
+  if (meta) meta.textContent = text || '';
+};
+
+window.rdfopBrowserUpdateButtons = function(root) {
+  var back = root.querySelector('[data-action=back]');
+  var forward = root.querySelector('[data-action=forward]');
+  var mode = root.dataset.mode || 'web';
+  if (mode === 'electron') {
+    return;
+  }
+  var idx = parseInt(root.dataset.histIdx || '0', 10);
+  var len = parseInt(root.dataset.histLen || '0', 10);
+  if (back) back.disabled = !(idx > 0);
+  if (forward) forward.disabled = !(idx < len - 1);
+};
+
+window.rdfopBrowserPushHistory = function(root, url) {
+  var hist = [];
+  try { hist = JSON.parse(root.dataset.history || '[]'); } catch (e) {}
+  var idx = parseInt(root.dataset.histIdx || '-1', 10);
+  hist = hist.slice(0, idx + 1);
+  if (!hist.length || hist[hist.length - 1] !== url) hist.push(url);
+  root.dataset.history = JSON.stringify(hist);
+  root.dataset.histIdx = String(hist.length - 1);
+  root.dataset.histLen = String(hist.length);
+  window.rdfopBrowserUpdateButtons(root);
+};
+
+window.rdfopBrowserRenderIframe = function(root, url, pushHistory) {
+  var viewport = root.querySelector('.rdfop-browser__viewport');
+  if (!viewport) return;
+
+  if (pushHistory) window.rdfopBrowserPushHistory(root, url);
+
+  var old = viewport.querySelector('iframe.rdfop-browser__frame');
+  if (old) old.remove();
+
+  var frame = document.createElement('iframe');
+  frame.className = 'rdfop-browser__frame';
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-presentation');
+  frame.setAttribute('allow', 'camera; microphone; display-capture; fullscreen; autoplay; clipboard-read; clipboard-write; geolocation');
+  frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+  frame.src = url;
+
+  frame.addEventListener('load', function() {
+    window.rdfopBrowserSetMeta(root, 'loaded');
+    try {
+      var actual = frame.contentWindow.location.href;
+      if (actual && actual !== 'about:blank') {
+        var input = root.querySelector('.rdfop-browser__url');
+        if (input) input.value = actual;
+        root.dataset.currentUrl = actual;
+      }
+    } catch (e) {
+      /* cross-origin: expected */
+    }
+  });
+
+  viewport.innerHTML = '';
+  viewport.appendChild(frame);
+  root.dataset.mode = 'web';
+  root.classList.remove('rdfop-browser--electron');
+  root.classList.add('rdfop-browser--web');
+  window.rdfopBrowserSetMeta(root, 'loading …');
+  window.rdfopBrowserUpdateButtons(root);
+};
+
+window.rdfopBrowserRenderElectron = function(root, url) {
+  var viewport = root.querySelector('.rdfop-browser__viewport');
+  if (!viewport) return;
+
+  viewport.innerHTML = '';
+
+  var wv = document.createElement('webview');
+  wv.className = 'rdfop-browser__webview';
+  wv.src = url;
+  wv.setAttribute('allowpopups', 'true');
+  wv.setAttribute('webpreferences', 'contextIsolation=yes');
+
+  wv.addEventListener('did-start-loading', function() {
+    window.rdfopBrowserSetMeta(root, 'loading …');
+  });
+
+  wv.addEventListener('did-stop-loading', async function() {
+    window.rdfopBrowserSetMeta(root, 'loaded');
+    try {
+      var current = typeof wv.getURL === 'function' ? wv.getURL() : url;
+      var title = typeof wv.getTitle === 'function' ? wv.getTitle() : '';
+      var input = root.querySelector('.rdfop-browser__url');
+      if (input && current) input.value = current;
+      if (title) root.dataset.title = title;
+      if (current) await window.rdfopBrowserPersistUrl(root, current);
+      var back = root.querySelector('[data-action=back]');
+      var forward = root.querySelector('[data-action=forward]');
+      if (back && typeof wv.canGoBack === 'function') back.disabled = !wv.canGoBack();
+      if (forward && typeof wv.canGoForward === 'function') forward.disabled = !wv.canGoForward();
+    } catch (e) {
+      console.warn(e);
+    }
+  });
+
+  wv.addEventListener('page-title-updated', function(e) {
+    if (e && e.title) root.dataset.title = e.title;
+  });
+
+  wv.addEventListener('did-fail-load', function(e) {
+    window.rdfopBrowserSetMeta(root, 'load error');
+    console.warn('webview load failed', e);
+  });
+
+  viewport.appendChild(wv);
+  root.dataset.mode = 'electron';
+  root.classList.remove('rdfop-browser--web');
+  root.classList.add('rdfop-browser--electron');
+};
+
+window.rdfopBrowserLoad = async function(root, rawUrl, pushHistory) {
+  var url = window.rdfopBrowserNormalizeUrl(rawUrl);
+  if (!url) return;
+  var input = root.querySelector('.rdfop-browser__url');
+  if (input) input.value = url;
+
+  if (window.rdfopBrowserIsElectron()) {
+    try {
+      window.rdfopBrowserRenderElectron(root, url);
+      await window.rdfopBrowserPersistUrl(root, url);
+      return;
+    } catch (e) {
+      console.warn('Electron mode failed, falling back to iframe', e);
+    }
+  }
+
+  window.rdfopBrowserRenderIframe(root, url, pushHistory !== false);
+  await window.rdfopBrowserPersistUrl(root, url);
+};
+
+window.rdfopBrowserGo = function(btn) {
+  var root = btn.closest('.rdfop-browser');
+  if (!root) return;
+  var input = root.querySelector('.rdfop-browser__url');
+  window.rdfopBrowserLoad(root, input ? input.value : '', true);
+};
+
+window.rdfopBrowserBack = function(btn) {
+  var root = btn.closest('.rdfop-browser');
+  if (!root) return;
+
+  if ((root.dataset.mode || '') === 'electron') {
+    var wv = root.querySelector('webview');
+    if (wv && typeof wv.canGoBack === 'function' && wv.canGoBack()) wv.goBack();
+    return;
+  }
+
+  var hist = [];
+  try { hist = JSON.parse(root.dataset.history || '[]'); } catch (e) {}
+  var idx = parseInt(root.dataset.histIdx || '0', 10);
+  if (idx > 0) {
+    idx--;
+    root.dataset.histIdx = String(idx);
+    var url = hist[idx];
+    var input = root.querySelector('.rdfop-browser__url');
+    if (input) input.value = url;
+    window.rdfopBrowserRenderIframe(root, url, false);
+  }
+  window.rdfopBrowserUpdateButtons(root);
+};
+
+window.rdfopBrowserForward = function(btn) {
+  var root = btn.closest('.rdfop-browser');
+  if (!root) return;
+
+  if ((root.dataset.mode || '') === 'electron') {
+    var wv = root.querySelector('webview');
+    if (wv && typeof wv.canGoForward === 'function' && wv.canGoForward()) wv.goForward();
+    return;
+  }
+
+  var hist = [];
+  try { hist = JSON.parse(root.dataset.history || '[]'); } catch (e) {}
+  var idx = parseInt(root.dataset.histIdx || '0', 10);
+  if (idx < hist.length - 1) {
+    idx++;
+    root.dataset.histIdx = String(idx);
+    var url = hist[idx];
+    var input = root.querySelector('.rdfop-browser__url');
+    if (input) input.value = url;
+    window.rdfopBrowserRenderIframe(root, url, false);
+  }
+  window.rdfopBrowserUpdateButtons(root);
+};
+
+window.rdfopBrowserReload = function(btn) {
+  var root = btn.closest('.rdfop-browser');
+  if (!root) return;
+
+  if ((root.dataset.mode || '') === 'electron') {
+    var wv = root.querySelector('webview');
+    if (wv && typeof wv.reload === 'function') {
+      wv.reload();
+      return;
+    }
+  }
+
+  var frame = root.querySelector('iframe.rdfop-browser__frame');
+  if (frame) {
+    var src = frame.src;
+    frame.src = src;
+    window.rdfopBrowserSetMeta(root, 'loading …');
+  }
+};
+
+window.rdfopBrowserInit = function(el) {
+  var roots = el.querySelectorAll ? Array.from(el.querySelectorAll('.rdfop-browser')) : [];
+  if (el.classList && el.classList.contains('rdfop-browser')) roots.unshift(el);
+
+  roots.forEach(function(root) {
+    if (root.dataset.browserInit === '1') return;
+    root.dataset.browserInit = '1';
+
+    var initial = root.dataset.initialUrl || '';
+    root.dataset.currentUrl = initial;
+
+    if (initial) {
+      root.dataset.history = JSON.stringify([initial]);
+      root.dataset.histIdx = '0';
+      root.dataset.histLen = '1';
+      window.rdfopBrowserLoad(root, initial, false);
+    } else {
+      window.rdfopBrowserUpdateButtons(root);
+    }
+  });
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function(){ window.rdfopBrowserInit(document); });
+} else {
+  window.rdfopBrowserInit(document);
+}
+""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?url WHERE { ?id rdfop:url ?url }
+BEGIN
+?><div class='rdfop-c rdfop-browser' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-initial-url='<?rdf PRINT HTML ?url ?>'>
+  <div class='rdfop-browser__bar'>
+    <button class='rdfop-browser__btn' data-action='back' onclick='rdfopBrowserBack(this)' title='Back'>&larr;</button>
+    <button class='rdfop-browser__btn' data-action='forward' onclick='rdfopBrowserForward(this)' title='Forward'>&rarr;</button>
+    <button class='rdfop-browser__btn' data-action='reload' onclick='rdfopBrowserReload(this)' title='Reload'>&#x21bb;</button>
+    <input class='rdfop-browser__url' type='url' value='<?rdf PRINT HTML ?url ?>' placeholder='https://example.com'
+      onkeydown='if(event.key==&quot;Enter&quot;){event.preventDefault();rdfopBrowserGo(this.nextElementSibling)}'>
+    <button class='rdfop-browser__btn' onclick='rdfopBrowserGo(this)'>Go</button>
+    <span class='rdfop-browser__meta'>ready</span>
+  </div>
+  <div class='rdfop-browser__viewport'>
+    <div class='rdfop-browser__placeholder'>
+      <div class='rdfop-browser__hint'>Loading …</div>
+    </div>
+  </div>
+</div><?rdf
+ELSE
+?><div class='rdfop-c rdfop-browser' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <div class='rdfop-browser__bar'>
+    <button class='rdfop-browser__btn' data-action='back' onclick='rdfopBrowserBack(this)' title='Back' disabled>&larr;</button>
+    <button class='rdfop-browser__btn' data-action='forward' onclick='rdfopBrowserForward(this)' title='Forward' disabled>&rarr;</button>
+    <button class='rdfop-browser__btn' data-action='reload' onclick='rdfopBrowserReload(this)' title='Reload'>&#x21bb;</button>
+    <input class='rdfop-browser__url' type='url' placeholder='https://example.com'
+      onkeydown='if(event.key==&quot;Enter&quot;){event.preventDefault();rdfopBrowserGo(this.nextElementSibling)}'>
+    <button class='rdfop-browser__btn' onclick='rdfopBrowserGo(this)'>Go</button>
+    <span class='rdfop-browser__meta'>ready</span>
+  </div>
+  <div class='rdfop-browser__viewport'>
+    <div class='rdfop-browser__placeholder'>
+      <div class='rdfop-browser__hint'>
+        Enter a URL above to start browsing.
+      </div>
+    </div>
+  </div>
+</div><?rdf
+END""" .

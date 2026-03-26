@@ -1,0 +1,41 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# SPARQLConsole
+################################################################
+
+rdfop:SPARQLConsole a rdfop:EntityType ; rdfs:label "SPARQL Console" .
+rdfop:SPARQLConsole rdfop:paletteVisible "true" .
+rdfop:SPARQLConsole rdfop:view rdfop:SPARQLConsole_view .
+
+rdfop:SPARQLConsole_view a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-sparql { display:flex; flex-direction:column; height:100%; padding:1em; box-sizing:border-box; }
+.rdfop-sparql__editor { flex-shrink:0; }
+.rdfop-sparql__results { flex:1; overflow:auto; margin-top:1em; }""" ;
+  rdfop:js """
+window.rdfopSparqlExec = async function(btn) {
+  var form = btn.closest('form');
+  var results = form.closest('.rdfop-sparql').querySelector('.rdfop-sparql__results');
+  var body = new URLSearchParams(new FormData(form)).toString();
+  var resp = await fetch('/rdf', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body });
+  results.innerHTML = await resp.text();
+};""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?dummy WHERE { ?id a rdfop:SPARQLConsole }
+BEGIN
+?><div class='rdfop-c rdfop-sparql' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <div class='rdfop-sparql__editor'>
+    <h3>SPARQL Console</h3>
+    <form>
+      <textarea class='input w-100' name='rdf' style='min-height:15vh' onkeydown='if(event.ctrlKey&amp;&amp;event.key==&quot;Enter&quot;){event.preventDefault();rdfopSparqlExec(this)}'>SELECT ?s, ?p, ?o WHERE {?s ?p ?o}</textarea>
+      <div class='mt-2'>
+        <button class='btn primary' type='button' onclick='rdfopSparqlExec(this)'>Execute</button>
+      </div>
+    </form>
+  </div>
+  <div class='rdfop-sparql__results'></div>
+</div><?rdf
+END""" .

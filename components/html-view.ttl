@@ -1,0 +1,58 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# HTMLView + HTMLEdit
+################################################################
+
+# Component type: HTMLView
+rdfop:HTMLView a rdfop:EntityType ; rdfs:label "HTML View" .
+rdfop:HTMLView rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#html> "<p>Click the pencil to edit.</p>" .
+""" .
+
+# Attribute for HTMLView content
+rdfop:html a rdf:Property ; rdfs:domain rdfop:HTMLView ; rdfs:range rdfs:Literal .
+
+# HTMLView components
+rdfop:HTMLView rdfop:view rdfop:HTMLView_view .
+rdfop:HTMLView rdfop:edit rdfop:HTMLEdit .
+
+rdfop:HTMLView_view a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-edit-btn { position: absolute; top: 34px; right: 12px; background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 16px; line-height: 1; z-index: 10; opacity: 0; transition: opacity .15s; }
+.rdfop-c:hover > .rdfop-edit-btn { opacity: 1; }
+.rdfop-edit-btn:hover { background: #f1f5f9; }""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?h WHERE { ?id rdfop:html ?h }
+BEGIN
+?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#html&quot;}'>
+  <button class='rdfop-edit-btn' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>&#x270E;</button>
+  <iframe sandbox='allow-scripts' srcdoc='<?rdf PRINT HTML ?h ?>' style='width:100%;height:100%;border:none'></iframe>
+</div><?rdf
+END""" .
+
+# HTMLView: "edit" component — HTMLEdit: textarea with save/cancel
+rdfop:HTMLEdit a rdfop:EditorComponent ;
+  rdfop:css """.rdfop-edit-toolbar { position: absolute; top: 34px; right: 12px; display: flex; gap: 6px; z-index: 10; opacity: 0; transition: opacity .15s; }
+.rdfop-c--editing:hover .rdfop-edit-toolbar { opacity: 1; }
+.rdfop-edit-toolbar button { background: var(--panel); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 16px; }
+.rdfop-edit-toolbar button:hover { background: #f1f5f9; }
+.rdfop-c--editing { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.rdfop-editor { width: 100%; height: 100%; font-family: monospace; font-size: 13px; border: none; padding: 10px 12px; resize: none; box-sizing: border-box; outline: none; }""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+PARAMETER ?p "p"
+SELECT ?val WHERE { ?id ?p ?val }
+BEGIN
+?><div class='rdfop-c rdfop-c--editing' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'>
+  <div class='rdfop-edit-toolbar'>
+    <button onclick='rdfopCommit(this)'>&#x2714;</button>
+    <button onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'>&#x2718;</button>
+  </div>
+  <!-- TODO: TinyMCE -->
+  <textarea class='rdfop-editor'><?rdf PRINT HTML ?val ?></textarea>
+</div><?rdf
+END""" .
+
+rdfop:HTMLView rdfop:paletteVisible "true" .
