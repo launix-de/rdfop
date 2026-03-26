@@ -378,7 +378,6 @@ END""" .
 ################################################################
 
 # Tree structure properties (shared by all layout nodes)
-rdfop:parent a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdf:Resource .
 rdfop:children a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdf:Resource .
 rdfop:order a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal .
 
@@ -388,7 +387,7 @@ rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:r
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
 rdfop:ComponentSelector rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?parent WHERE { ?id rdfop:parent ?parent }
+SELECT ?parent WHERE { ?parent rdfop:children ?id }
 BEGIN
   DELETE { ?parent rdfop:children ?id }
   DELETE { ?parent rdfop:selectedNode ?id }
@@ -552,7 +551,7 @@ window.rdfopPaletteDrop = async function(e, el) {
   /* insert content here */
   await rdfopSave(null,
     _sid(p.id)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n'+
-    _sid(contentId)+' <'+_S+'parent> '+_sid(p.id)+' .\n'
+    _sid(p.id)+' <'+_S+'children> '+_sid(contentId)+' .\n'
   );
   /* server cleanup + DOM event */
   if (sourceId) { await fetch('/onChildRemoved/' + encodeURIComponent(sourceId) + '?child=' + encodeURIComponent(contentId)); if (srcDOM) srcDOM.dispatchEvent(new CustomEvent('rdfop:childRemoved', {bubbles: true})); }
@@ -579,13 +578,13 @@ window.rdfopFilledDrop = async function(e, el) {
     var del = '', ins = '';
     del += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n';
     ins += _sid(p.id)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n';
-    del += _sid(contentId)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n';
-    ins += _sid(contentId)+' <'+_S+'parent> '+_sid(p.id)+' .\n';
+    del += _sid(srcP.id)+' <'+_S+'children> '+_sid(contentId)+' .\n';
+    ins += _sid(p.id)+' <'+_S+'children> '+_sid(contentId)+' .\n';
     if (tgtSel) {
       del += _sid(p.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n';
       ins += _sid(srcP.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n';
-      del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(p.id)+' .\n';
-      ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(srcP.id)+' .\n';
+      del += _sid(p.id)+' <'+_S+'children> '+_sid(tgtSel)+' .\n';
+      ins += _sid(srcP.id)+' <'+_S+'children> '+_sid(tgtSel)+' .\n';
     }
     await rdfopSave(del, ins);
     await rdfopSwap(srcDOM, 'view');
@@ -597,7 +596,7 @@ window.rdfopFilledDrop = async function(e, el) {
     var resp = await fetch('/rdfop-create', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'parent='+encodeURIComponent(p.id)+'&type='+encodeURIComponent(splitType) });
     if (!resp.ok) return;
     var splitId = (await resp.text()).trim();
-    var children = await _rdfopQuery('SELECT ?c, ?ord WHERE { ?c <'+_S+'parent> <'+splitId+'> . ?c <'+_S+'order> ?ord }');
+    var children = await _rdfopQuery('SELECT ?c, ?ord WHERE { <'+splitId+'> <'+_S+'children> ?c . ?c <'+_S+'order> ?ord }');
     children.sort(function(a,b){ return a['?ord'] < b['?ord'] ? -1 : 1; });
     if (children.length < 2) return;
     var edgeSel = (zone === 'left' || zone === 'top') ? children[0]['?c'] : children[1]['?c'];
@@ -605,15 +604,15 @@ window.rdfopFilledDrop = async function(e, el) {
     var del = '', ins = '';
     if (sourceId) {
       del += _sid(sourceId)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n';
-      del += _sid(contentId)+' <'+_S+'parent> '+_sid(sourceId)+' .\n';
+      del += _sid(sourceId)+' <'+_S+'children> '+_sid(contentId)+' .\n';
     }
     ins += _sid(edgeSel)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n';
-    ins += _sid(contentId)+' <'+_S+'parent> '+_sid(edgeSel)+' .\n';
+    ins += _sid(edgeSel)+' <'+_S+'children> '+_sid(contentId)+' .\n';
     if (tgtSel) {
       del += _sid(p.id)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n';
       ins += _sid(otherSel)+' <'+_S+'selectedNode> '+_sid(tgtSel)+' .\n';
-      del += _sid(tgtSel)+' <'+_S+'parent> '+_sid(p.id)+' .\n';
-      ins += _sid(tgtSel)+' <'+_S+'parent> '+_sid(otherSel)+' .\n';
+      del += _sid(p.id)+' <'+_S+'children> '+_sid(tgtSel)+' .\n';
+      ins += _sid(otherSel)+' <'+_S+'children> '+_sid(tgtSel)+' .\n';
     }
     ins += _sid(p.id)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
     await rdfopSave(del, ins);
@@ -683,16 +682,16 @@ window.rdfopBarDrop = async function(e, bar) {
       );
     }
   }
-  var children = await _rdfopQuery('SELECT ?c WHERE { ?c <'+_S+'parent> <'+newTabId+'> }');
+  var children = await _rdfopQuery('SELECT ?c WHERE { <'+newTabId+'> <'+_S+'children> ?c }');
   if (!children.length) return;
   var newSelId = children[0]['?c'];
   var del = '', ins = '';
   if (sourceId) {
     del += _sid(sourceId)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n';
-    del += _sid(contentId)+' <'+_S+'parent> '+_sid(sourceId)+' .\n';
+    del += _sid(sourceId)+' <'+_S+'children> '+_sid(contentId)+' .\n';
   }
   ins += _sid(newSelId)+' <'+_S+'selectedNode> '+_sid(contentId)+' .\n';
-  ins += _sid(contentId)+' <'+_S+'parent> '+_sid(newSelId)+' .\n';
+  ins += _sid(newSelId)+' <'+_S+'children> '+_sid(contentId)+' .\n';
   var srcLabel = srcDOM ? (srcDOM.dataset.label || '') : '';
   if (srcLabel) {
     del += '<'+newTabId+'> <'+_S+'tabLabel> "New Tab" .\n';
@@ -771,14 +770,12 @@ rdfop:splitDirection a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:
 rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
 rdfop:Split rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?gp, ?sib WHERE { ?id rdfop:parent ?gp . ?id rdfop:children ?sib }
+SELECT ?gp, ?sib WHERE { ?gp rdfop:children ?id . ?id rdfop:children ?sib }
 BEGIN
   DELETE { ?gp rdfop:children ?id }
   INSERT { ?gp rdfop:children ?sib }
   DELETE { ?gp rdfop:selectedNode ?id }
   INSERT { ?gp rdfop:selectedNode ?sib }
-  DELETE { ?sib rdfop:parent ?id }
-  INSERT { ?sib rdfop:parent ?gp }
   DELETE { ?id rdfop:children ?sib }
   SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
 END
@@ -795,10 +792,8 @@ $ID <https://launix.de/rdfop/schema#splitRatio> "0.64" .
 $ID <https://launix.de/rdfop/schema#children> _:left .
 $ID <https://launix.de/rdfop/schema#children> _:right .
 _:left a <https://launix.de/rdfop/schema#ComponentSelector> .
-_:left <https://launix.de/rdfop/schema#parent> $ID .
 _:left <https://launix.de/rdfop/schema#order> "1" .
 _:right a <https://launix.de/rdfop/schema#ComponentSelector> .
-_:right <https://launix.de/rdfop/schema#parent> $ID .
 _:right <https://launix.de/rdfop/schema#order> "2" .
 """ .
 
@@ -811,10 +806,8 @@ $ID <https://launix.de/rdfop/schema#splitRatio> "0.64" .
 $ID <https://launix.de/rdfop/schema#children> _:top .
 $ID <https://launix.de/rdfop/schema#children> _:bottom .
 _:top a <https://launix.de/rdfop/schema#ComponentSelector> .
-_:top <https://launix.de/rdfop/schema#parent> $ID .
 _:top <https://launix.de/rdfop/schema#order> "1" .
 _:bottom a <https://launix.de/rdfop/schema#ComponentSelector> .
-_:bottom <https://launix.de/rdfop/schema#parent> $ID .
 _:bottom <https://launix.de/rdfop/schema#order> "2" .
 """ .
 
@@ -870,7 +863,7 @@ SELECT ?dir, ?ratio WHERE { ?id rdfop:splitDirection ?dir . ?id rdfop:splitRatio
 BEGIN
 ?><div class='rdfop-c rdfop-split rdfop-split--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-ratio='<?rdf PRINT HTML ?ratio ?>' style='--ratio:<?rdf PRINT HTML ?ratio ?>'>
   <?rdf
-  SELECT ?child, ?ord WHERE { ?child rdfop:order ?ord . ?child rdfop:parent ?id } ORDER BY ?ord
+  SELECT ?child, ?ord WHERE { ?id rdfop:children ?child . ?child rdfop:order ?ord } ORDER BY ?ord
   BEGIN
   ?><div class='rdfop-split__pane'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
   END
@@ -884,7 +877,7 @@ rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
 rdfop:Tab rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?tabgroup WHERE { ?id rdfop:parent ?tabgroup }
+SELECT ?tabgroup WHERE { ?tabgroup rdfop:children ?id }
 BEGIN
   DELETE { ?tabgroup rdfop:children ?id }
   SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
@@ -893,7 +886,6 @@ END
 rdfop:Tab rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#tabLabel> "New Tab" .
 $ID <https://launix.de/rdfop/schema#children> _:child .
 _:child a <https://launix.de/rdfop/schema#ComponentSelector> .
-_:child <https://launix.de/rdfop/schema#parent> $ID .
 """ .
 
 # TabGroup components
@@ -1162,7 +1154,7 @@ BEGIN
   <div class='rdfop-tabs__bar' ondragover='rdfopBarDragOver(event,this)' ondrop='rdfopBarDrop(event,this)'>
     <button class='rdfop-tabs__dir' onclick='rdfopTabDirection(this.closest(&quot;.rdfop-tabs__bar&quot;))'>&#x2B82;</button>
     <?rdf
-    SELECT ?tab, ?label, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label } ORDER BY ?ord
+    SELECT ?tab, ?label, ?ord WHERE { ?id rdfop:children ?tab . ?tab rdfop:order ?ord . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label } ORDER BY ?ord
     BEGIN
     ?><div class='rdfop-tabs__tab' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' draggable='true' ondragstart='rdfopTabDragStart(event)' ondragover='rdfopTabDragOver(event)' ondragleave='rdfopTabDragLeave(event)' ondrop='rdfopTabDrop(event)' ondragend='rdfopTabDragEnd(event)' onclick='rdfopTabSwitch(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
@@ -1174,7 +1166,7 @@ BEGIN
   </div>
   <div class='rdfop-tabs__content'>
     <?rdf
-    SELECT ?tab, ?child, ?ord WHERE { ?tab rdfop:order ?ord . ?tab rdfop:parent ?id . ?tab a rdfop:Tab . ?tab rdfop:children ?child } ORDER BY ?ord
+    SELECT ?tab, ?child, ?ord WHERE { ?id rdfop:children ?tab . ?tab rdfop:order ?ord . ?tab a rdfop:Tab . ?tab rdfop:children ?child } ORDER BY ?ord
     BEGIN
     ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
     END

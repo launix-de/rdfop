@@ -326,10 +326,10 @@ END
         (set sparql_parent (if (match (concat parent_id) (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
         /* order = unix timestamp so new items sort to the end */
         (set order (format_date (now) "%Y%m%d%H%i%s"))
-        /* base triples: type, parent, order */
+        /* base triples: type, children link from parent, order */
         (set base_ttl (concat
             "<" new_id "> a <" node_type "> .\n"
-            "<" new_id "> <https://launix.de/rdfop/schema#parent> " sparql_parent " .\n"
+            sparql_parent " <https://launix.de/rdfop/schema#children> <" new_id "> .\n"
             "<" new_id "> <https://launix.de/rdfop/schema#order> \"" order "\" .\n"
         ))
         /* look up initTemplate from the EntityType */

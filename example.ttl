@@ -5,56 +5,50 @@ main a rdfop:ComponentSelector ;
   rdfop:selectedNode _:tg .
 
 _:tg a rdfop:TabGroup ;
-  rdfop:parent main ;
-  rdfop:tabDirection "top" .
+  rdfop:tabDirection "top" ;
+  rdfop:children _:tab1 ;
+  rdfop:children _:tab2 ;
+  rdfop:children _:tab3 ;
+  rdfop:children _:tab4 ;
+  rdfop:children _:tab5 .
 
 # Welcome tab with RDFOP logo and description
 _:tab1 a rdfop:Tab ;
-  rdfop:parent _:tg ;
   rdfop:tabLabel "RDFOP" ;
   rdfop:order "0000000001" ;
   rdfop:children _:hw .
 
 _:hw a rdfop:HTMLView ;
-  rdfop:parent _:tab1 ;
   rdfop:html "<div style='padding:2em;max-width:700px;margin:0 auto'><h1 style='font-size:2.5em;margin-bottom:0.2em'>RDFOP</h1><p style='color:#6b7280;font-size:1.1em'>A model-driven low-code framework built on RDF. Define your data model as triples, compose layouts from reusable components, and edit everything inline.</p><p>Click the pencil icon to edit this content, or use the tabs above to explore.</p></div>" .
 
 # Explorer tab
 _:tab2 a rdfop:Tab ;
-  rdfop:parent _:tg ;
   rdfop:tabLabel "Explorer" ;
   rdfop:order "0000000002" ;
   rdfop:children _:expl .
 
-_:expl a rdfop:Explorer ;
-  rdfop:parent _:tab2 .
+_:expl a rdfop:Explorer .
 
 # Settings tab
 _:tab3 a rdfop:Tab ;
-  rdfop:parent _:tg ;
   rdfop:tabLabel "Settings" ;
   rdfop:order "0000000003" ;
   rdfop:children _:sett .
 
-_:sett a rdfop:Settings ;
-  rdfop:parent _:tab3 .
+_:sett a rdfop:Settings .
 
 # SPARQL Console tab
 _:tab4 a rdfop:Tab ;
-  rdfop:parent _:tg ;
   rdfop:tabLabel "SPARQL" ;
   rdfop:order "0000000004" ;
   rdfop:children _:sparql .
 
-_:sparql a rdfop:SPARQLConsole ;
-  rdfop:parent _:tab4 .
+_:sparql a rdfop:SPARQLConsole .
 
 # TTL Import tab
 _:tab5 a rdfop:Tab ;
-  rdfop:parent _:tg ;
   rdfop:tabLabel "TTL Import" ;
   rdfop:order "0000000005" ;
   rdfop:children _:ttlimp .
 
-_:ttlimp a rdfop:TTLImport ;
-  rdfop:parent _:tab5 .
+_:ttlimp a rdfop:TTLImport .
