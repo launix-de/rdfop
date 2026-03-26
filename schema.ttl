@@ -12,6 +12,12 @@
 rdfop:EntityType a rdfs:Class .
 rdfop:Attribute a rdfs:Class .
 rdfop:EditorComponent a rdfs:Class .
+rdfop:Method a rdfs:Class .
+
+# Methods (public actions callable via /{method}/{id})
+rdfop:view a rdfop:Method .
+rdfop:edit a rdfop:Method .
+rdfop:onChildRemoved a rdfop:Method .
 rdfop:CodeGenerator a rdfs:Class .
 rdfop:Expr a rdfs:Class .
 rdfop:Parameter a rdfs:Class .
@@ -380,6 +386,15 @@ rdfop:order a rdf:Property ; rdfs:domain rdf:Resource ; rdfs:range rdfs:Literal 
 rdfop:ComponentSelector a rdfop:EntityType .
 rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:range rdf:Resource .
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
+rdfop:ComponentSelector rdfop:onChildRemoved """
+PARAMETER ?child "child"
+SELECT ?parent WHERE { ?parent rdfop:children ?id }
+BEGIN
+  DELETE { ?parent rdfop:children ?id }
+  SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+  CALL rdfop_action("onChildRemoved", ?parent, "child", ?id)
+END
+""" .
 
 rdfop:ComponentSelector_view a rdfop:EditorComponent ;
   rdfop:css """.rdfop-palette { display: flex; flex-wrap: wrap; gap: 12px; padding: 1em; align-content: flex-start; position: relative; min-height: 40px; }
@@ -742,6 +757,16 @@ rdfop:HTMLView rdfop:paletteVisible "true" .
 rdfop:Split a rdfop:EntityType .
 rdfop:splitDirection a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
 rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
+rdfop:Split rdfop:onChildRemoved """
+PARAMETER ?child "child"
+SELECT ?gp, ?sib WHERE { ?gp rdfop:children ?id . ?id rdfop:children ?sib }
+BEGIN
+  INSERT { ?gp rdfop:children ?sib }
+  DELETE { ?gp rdfop:children ?id }
+  DELETE { ?id rdfop:children ?sib }
+  SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+END
+""" .
 rdfop:Split rdfop:view rdfop:Split_view .
 
 # Split palette entries: horizontal and vertical
@@ -841,6 +866,14 @@ END""" .
 # --- Tab ---
 rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
+rdfop:Tab rdfop:onChildRemoved """
+PARAMETER ?child "child"
+SELECT ?tabgroup WHERE { ?tabgroup rdfop:children ?id }
+BEGIN
+  DELETE { ?tabgroup rdfop:children ?id }
+  SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+END
+""" .
 rdfop:Tab rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#tabLabel> "New Tab" .
 $ID <https://launix.de/rdfop/schema#children> _:child .
 _:child a <https://launix.de/rdfop/schema#ComponentSelector> .
