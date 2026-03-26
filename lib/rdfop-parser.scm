@@ -25,8 +25,17 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(parser (atom "RES" true) 'res)
 	rdf_expression
 )))
+/* triple pattern parser for DELETE/INSERT: s p o, o2 ; p2 o3 . */
+(define rdfhp_triples (parser '(
+	(define triples (* (or
+		(parser '((define s rdf_expression) (define ps (+ (parser '((define p rdf_expression) (define os (+ rdf_expression ","))) (map os (lambda (o) '(p o)))) ";"))) (merge (map ps (lambda (p) (map p (lambda (p1) (cons s p1)))))))
+	) "."))
+) (merge (coalesce triples '('())))))
+
 (define rdfhp_statement (parser (or
 	(parser '((atom "PARAMETER" true) (define param rdf_variable) (define value rdfhp_expression)) '("param" param value))
+	(parser '((atom "DELETE" true) "{" (define triples rdfhp_triples) "}") '("delete" triples))
+	(parser '((atom "INSERT" true) "{" (define triples rdfhp_triples) "}") '("insert" triples))
 	(parser '((define loop_header rdf_select) (atom "BEGIN" true) (define loop_body rdfhp_program) (atom "ELSE" true) (define loop_else rdfhp_program) (atom "END" true)) '("loop" loop_header loop_body loop_else))
 	(parser '((define loop_header rdf_select) (atom "BEGIN" true) (define loop_body rdfhp_program) (atom "END" true)) '("loop" loop_header loop_body))
 	(parser (define select rdf_select) '("select" select))
@@ -52,6 +61,14 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(match (ttl_header template) '("prefixes" definitions "rest" body) (begin
 		(define compile (lambda (program context) (match program
 			(cons '("param" '('get_var sym) value) rest) '('!begin '('set sym '('('req "query") (rdf_replace_ctx value context))) (compile rest (append context sym sym)))
+			(cons '("delete" triples) rest) '('begin (cons 'begin (map triples (lambda (triple) (match triple '(s p o)
+				'('scan schema "rdf" '("s" "p" "o") '('lambda '('s 'p 'o) '('and '('equal? 's (rdf_replace_ctx s context)) '('equal? 'p (rdf_replace_ctx p context)) '('equal? 'o (rdf_replace_ctx o context)))) '("$update") '('lambda '('$update) '('$update)) '('lambda '('a 'b) 'b) nil)
+			)))) (compile rest context))
+			(cons '("insert" triples) rest) '('begin
+				'('insert schema "rdf" '("s" "p" "o") (cons 'list (map triples (lambda (triple) (match triple '(s p o)
+					'('list (rdf_replace_ctx s context) (rdf_replace_ctx p context) (rdf_replace_ctx o context))
+				)))) '() '('lambda '() true))
+				(compile rest context))
 			(cons '("print" format value) rest) '('!begin '('print '((coalesce (rdfhp_filters (toUpper format)) (error "print: unknown format filter: " format)) (rdf_replace_ctx value context))) (compile rest context))
 			(cons '("select" query) rest) '('!begin '('set 'o '('once '('lambda '('f) '('f)))) (rdf_queryplan schema query definitions context (lambda (cols context) '('o '('lambda '() (compile rest context))))))
 			(cons '("loop" query body) rest) '('begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
