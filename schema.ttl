@@ -311,6 +311,17 @@ BEGIN
 </div><?rdf
 END""" .
 
+# --- Test DELETE/INSERT (temporary) ---
+rdfop:TestDI a rdfop:EntityType .
+rdfop:TestDI rdfop:view rdfop:TestDI_view .
+rdfop:TestDI_view a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX test: <http://test.org/> .
+PARAMETER ?id "id"
+DELETE { test:deletetest test:name "hello" }
+INSERT { test:deletetest test:name "inserted_by_rdfhp" }
+?><div>DELETE/INSERT executed</div><?rdf
+""" .
+
 # --- Website ---
 rdfop:Website a rdfop:EntityType ; rdfs:label "Website" .
 rdfop:Website rdfop:paletteVisible "true" .

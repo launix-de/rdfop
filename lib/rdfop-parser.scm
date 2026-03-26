@@ -61,14 +61,19 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(match (ttl_header template) '("prefixes" definitions "rest" body) (begin
 		(define compile (lambda (program context) (match program
 			(cons '("param" '('get_var sym) value) rest) '('!begin '('set sym '('('req "query") (rdf_replace_ctx value context))) (compile rest (append context sym sym)))
-			(cons '("delete" triples) rest) '('begin (cons 'begin (map triples (lambda (triple) (match triple '(s p o)
-				'('scan schema "rdf" '("s" "p" "o") '('lambda '('s 'p 'o) '('and '('equal? 's (rdf_replace_ctx s context)) '('equal? 'p (rdf_replace_ctx p context)) '('equal? 'o (rdf_replace_ctx o context)))) '("$update") '('lambda '('$update) '('$update)) '('lambda '('a 'b) 'b) nil)
-			)))) (compile rest context))
-			(cons '("insert" triples) rest) '('begin
-				'('insert schema "rdf" '("s" "p" "o") (cons 'list (map triples (lambda (triple) (match triple '(s p o)
-					'('list (rdf_replace_ctx s context) (rdf_replace_ctx p context) (rdf_replace_ctx o context))
-				)))) '() '('lambda '() true))
-				(compile rest context))
+			(cons '("delete" triples) rest) (begin
+				(define _resolve (lambda (expr) (begin (set r (rdf_replace_ctx expr context)) (if (list? r) (eval r) r))))
+				(set del_code (map triples (lambda (triple) (match triple '(s p o) (begin
+					(set rs (_resolve s)) (set rp (_resolve p)) (set ro (_resolve o))
+					'('scan schema "rdf" '('list "s" "p" "o") '('lambda '('_s '_p '_o) '('and '('equal? '_s rs) '('equal? '_p rp) '('equal? '_o ro))) '('list "$update") '('lambda '('$update) '('$update)) '('lambda '('a 'b) 'b) nil))
+				))))
+				(cons '!begin (append del_code (list (compile rest context)))))
+			(cons '("insert" triples) rest) (begin
+				(define _resolve (lambda (expr) (begin (set r (rdf_replace_ctx expr context)) (if (list? r) (eval r) r))))
+				(set ins_rows (map triples (lambda (triple) (match triple '(s p o)
+					(list (_resolve s) (_resolve p) (_resolve o))
+				))))
+				'('!begin '('insert schema "rdf" '('list "s" "p" "o") (cons 'list (map ins_rows (lambda (row) (cons 'list row)))) '('list) '('lambda '() true)) (compile rest context)))
 			(cons '("print" format value) rest) '('!begin '('print '((coalesce (rdfhp_filters (toUpper format)) (error "print: unknown format filter: " format)) (rdf_replace_ctx value context))) (compile rest context))
 			(cons '("select" query) rest) '('!begin '('set 'o '('once '('lambda '('f) '('f)))) (rdf_queryplan schema query definitions context (lambda (cols context) '('o '('lambda '() (compile rest context))))))
 			(cons '("loop" query body) rest) '('begin '('set 'm '('mutex)) (rdf_queryplan schema query definitions context (lambda (cols context) '('m '('lambda '() (compile body context))))) (compile rest context))
