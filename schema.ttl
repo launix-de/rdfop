@@ -42,7 +42,8 @@ rdfop:input a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs
 rdfop:inputVariable a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # bind JSON to this variable name
 rdfop:initTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # JSON object for new items
 rdfop:css a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # CSS styles for this component
-rdfop:js a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # JS code for this component
+rdfop:js a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal .
+rdfop:onChildRemoved a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal . # RDFHP snippet: ?id=parent, ?child=removed child # JS code for this component
 
 # Code Generators
 rdfop:handlesNodeType a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfop:EntityType .
@@ -310,17 +311,6 @@ BEGIN
   <div class='rdfop-ttl-results'></div>
 </div><?rdf
 END""" .
-
-# --- Test DELETE/INSERT (temporary) ---
-rdfop:TestDI a rdfop:EntityType .
-rdfop:TestDI rdfop:view rdfop:TestDI_view .
-rdfop:TestDI_view a rdfop:EditorComponent ;
-  rdfop:componentTemplate """@PREFIX test: <http://test.org/> .
-PARAMETER ?id "id"
-DELETE { test:deletetest test:name "hello" }
-INSERT { test:deletetest test:name "inserted_by_rdfhp" }
-?><div>DELETE/INSERT executed</div><?rdf
-""" .
 
 # --- Website ---
 rdfop:Website a rdfop:EntityType ; rdfs:label "Website" .

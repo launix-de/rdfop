@@ -385,24 +385,54 @@ END
     ))
 )))
 
-/* /view/<id> — render a single object as full page */
+/* /{action}/{id} — generic action dispatch */
 (define http_handler (begin
     (set _old_handler http_handler)
     (lambda (req res) (begin
         (set path (req "path"))
-        (match path (regex "^/view/(.+)" _ id) (begin
-            /* inject id into query params and delegate to index.rdfhp handler */
-            (set _q (newsession))
-            (try (lambda () (map_assoc (req "query") (lambda (k v) (_q k v)))) (lambda (e) nil))
-            (_q "id" (urldecode id))
-            (set wrapped_req (newsession))
-            (wrapped_req "query" _q)
-            (wrapped_req "method" (req "method"))
-            (wrapped_req "path" (req "path"))
-            (wrapped_req "body" (try (lambda () (req "body")) (lambda (e) (lambda () ""))))
-            (wrapped_req "bodyParts" (try (lambda () (req "bodyParts")) (lambda (e) (lambda () '()))))
-            (set handler (rdfop_routes "/view"))
-            (if handler (handler wrapped_req res) (_old_handler req res))
+        (match path (regex "^/([a-zA-Z][a-zA-Z0-9_]*)/(.+)" _ action id) (begin
+            (set id (urldecode id))
+            (set sparql_id (if (match (concat id) (regex ":" _) true false) (concat "<" id ">") id))
+            /* look up action template: ?type rdfop:<action> ?tpl */
+            (set _rc (newsession))
+            (try (lambda () (begin
+                (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
+                (eval (parse_sparql "rdf" (concat
+                    "SELECT ?tpl WHERE { " sparql_id " a ?type . ?type <https://launix.de/rdfop/schema#" action "> ?tpl } LIMIT 1"
+                )))
+            )) (lambda (e) nil))
+            (if (not (nil? (_rc "tpl"))) (begin
+                /* for "view": wrap in index.rdfhp page template */
+                (if (equal? action "view") (begin
+                    (set _q (newsession))
+                    (try (lambda () (map_assoc (req "query") (lambda (k v) (_q k v)))) (lambda (e) nil))
+                    (_q "id" id)
+                    (set wrapped_req (newsession))
+                    (wrapped_req "query" _q)
+                    (wrapped_req "method" (req "method"))
+                    (wrapped_req "path" (req "path"))
+                    (wrapped_req "body" (try (lambda () (req "body")) (lambda (e) (lambda () ""))))
+                    (wrapped_req "bodyParts" (try (lambda () (req "bodyParts")) (lambda (e) (lambda () '()))))
+                    (set handler (rdfop_routes "/view"))
+                    (if handler (handler wrapped_req res) (_old_handler req res))
+                ) (begin
+                    /* other actions: compile+execute the RDFHP snippet directly */
+                    ((res "header") "Content-Type" "text/plain")
+                    (set _q (newsession))
+                    (try (lambda () (map_assoc (req "query") (lambda (k v) (_q k v)))) (lambda (e) nil))
+                    (_q "id" id)
+                    (set req (newsession))
+                    (req "query" _q)
+                    (set print (res "print"))
+                    (define resultrow (lambda (o) nil))
+                    (eval (_compile_tpl (concat "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .\nPARAMETER ?id \"id\"\n" (_rc "tpl"))))
+                    ((res "status") 200)
+                    (print "ok")
+                ))
+            ) (begin
+                ((res "status") 404)
+                ((res "print") (concat "action not found: " action " for " id))
+            ))
         ) (_old_handler req res))
     ))
 ))
