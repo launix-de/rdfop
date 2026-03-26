@@ -388,9 +388,10 @@ rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:r
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
 rdfop:ComponentSelector rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?parent WHERE { ?parent rdfop:children ?id }
+SELECT ?parent WHERE { ?id rdfop:parent ?parent }
 BEGIN
   DELETE { ?parent rdfop:children ?id }
+  DELETE { ?parent rdfop:selectedNode ?id }
   SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
   CALL rdfop_action("onChildRemoved", ?parent, "child", ?id)
 END
@@ -616,29 +617,72 @@ window.rdfopFilledDrop = async function(e, el) {
     }
     ins += _sid(p.id)+' <'+_S+'selectedNode> <'+splitId+'> .\n';
     await rdfopSave(del, ins);
+    await rdfopSwap(el, 'view');
     if (sourceId) await _afterDrop(sourceId, contentId, srcDOM);
-    rdfopSwap(el, 'view');
   }
 };
 
 /* 4. tab-bar drop */
+window._barDropPosition = function(e, bar) {
+  var allTabs = Array.from(bar.querySelectorAll('.rdfop-tabs__tab'));
+  if (!allTabs.length) return {after: null};
+  var tabs = bar.closest('.rdfop-c');
+  var isVert = tabs && (tabs.classList.contains('rdfop-tabs--left') || tabs.classList.contains('rdfop-tabs--right') || tabs.classList.contains('rdfop-tabs--leftRotated') || tabs.classList.contains('rdfop-tabs--rightRotated'));
+  for (var i = 0; i < allTabs.length; i++) {
+    var rect = allTabs[i].getBoundingClientRect();
+    var mid = isVert ? (rect.top + rect.height/2) : (rect.left + rect.width/2);
+    var pos = isVert ? e.clientY : e.clientX;
+    if (pos < mid) return {before: allTabs[i]};
+  }
+  return {after: allTabs[allTabs.length - 1]};
+};
 window.rdfopBarDragOver = function(e, bar) {
   if (!_dragSourceDOM) return;
   e.preventDefault(); e.stopPropagation();
-  bar.classList.add('rdfop-tabs__bar--drop-target');
+  bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after')});
+  var pos = _barDropPosition(e, bar);
+  if (pos.before) pos.before.classList.add('rdfop-tabs__tab--dragover-before');
+  else if (pos.after) pos.after.classList.add('rdfop-tabs__tab--dragover-after');
+  else bar.classList.add('rdfop-tabs__bar--drop-target');
 };
 window.rdfopBarDrop = async function(e, bar) {
   e.preventDefault(); e.stopPropagation();
   var srcDOM = _dragSourceDOM;
   bar.classList.remove('rdfop-tabs__bar--drop-target');
+  bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after')});
   var contentId = _getDragContentId(e);
   if (!contentId) return;
   var tabs = bar.closest('.rdfop-c');
   var tabGroupP = JSON.parse(tabs.dataset.rdfopParams || '{}');
   var sourceId = srcDOM ? JSON.parse(srcDOM.dataset.rdfopParams || '{}').id : null;
+  /* determine insert position from drop coordinates */
+  var pos = _barDropPosition(e, bar);
+  var refTab = pos.before || pos.after;
+  var refOrder = refTab ? refTab.dataset.tabOrder : null;
   var resp = await fetch('/rdfop-create', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'parent='+encodeURIComponent(tabGroupP.id)+'&type=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23Tab' });
   if (!resp.ok) return;
   var newTabId = (await resp.text()).trim();
+  /* set order based on drop position */
+  if (refOrder) {
+    var allTabs = Array.from(bar.querySelectorAll('.rdfop-tabs__tab'));
+    var orders = allTabs.map(function(t){ return t.dataset.tabOrder; }).sort();
+    var refIdx = orders.indexOf(refOrder);
+    var newOrd;
+    if (pos.before) {
+      var prev = refIdx > 0 ? orders[refIdx - 1] : '0';
+      newOrd = String(Math.floor((parseInt(prev) + parseInt(refOrder)) / 2));
+      if (newOrd === prev || newOrd === refOrder) newOrd = prev + '5';
+    } else {
+      newOrd = String(parseInt(refOrder) + 1);
+    }
+    var oldOrd = await _rdfopQuery('SELECT ?o WHERE { <'+newTabId+'> <'+_S+'order> ?o }');
+    if (oldOrd.length && oldOrd[0]['?o']) {
+      await rdfopSave(
+        '<'+newTabId+'> <'+_S+'order> '+JSON.stringify(oldOrd[0]['?o'])+' .',
+        '<'+newTabId+'> <'+_S+'order> '+JSON.stringify(newOrd)+' .'
+      );
+    }
+  }
   var children = await _rdfopQuery('SELECT ?c WHERE { ?c <'+_S+'parent> <'+newTabId+'> }');
   if (!children.length) return;
   var newSelId = children[0]['?c'];
@@ -656,8 +700,8 @@ window.rdfopBarDrop = async function(e, bar) {
   }
   await rdfopSave(del, ins);
   if (sourceId) await _afterDrop(sourceId, contentId, srcDOM);
-  rdfopSwap(tabs, 'view');
-  setTimeout(function(){ var t = document.querySelector('.rdfop-tabs__tab[data-tab-id="'+newTabId+'"]'); if(t) rdfopTabSwitch(t); }, 100);
+  await rdfopSwap(tabs, 'view');
+  var t = document.querySelector('.rdfop-tabs__tab[data-tab-id="'+newTabId+'"]'); if(t) rdfopTabSwitch(t);
 };
 
 window._rdfopQuery = async function(sparql) {
@@ -727,10 +771,14 @@ rdfop:splitDirection a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:
 rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
 rdfop:Split rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?gp, ?sib WHERE { ?gp rdfop:children ?id . ?id rdfop:children ?sib }
+SELECT ?gp, ?sib WHERE { ?id rdfop:parent ?gp . ?id rdfop:children ?sib }
 BEGIN
-  INSERT { ?gp rdfop:children ?sib }
   DELETE { ?gp rdfop:children ?id }
+  INSERT { ?gp rdfop:children ?sib }
+  DELETE { ?gp rdfop:selectedNode ?id }
+  INSERT { ?gp rdfop:selectedNode ?sib }
+  DELETE { ?sib rdfop:parent ?id }
+  INSERT { ?sib rdfop:parent ?gp }
   DELETE { ?id rdfop:children ?sib }
   SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
 END
@@ -836,7 +884,7 @@ rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
 rdfop:Tab rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?tabgroup WHERE { ?tabgroup rdfop:children ?id }
+SELECT ?tabgroup WHERE { ?id rdfop:parent ?tabgroup }
 BEGIN
   DELETE { ?tabgroup rdfop:children ?id }
   SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
@@ -933,7 +981,8 @@ window.rdfopTabSwitch = function(t) {
   if (gid) { _rdfopActiveTabs[gid] = t.dataset.tabId; localStorage.setItem('rdfop-active-tabs', JSON.stringify(_rdfopActiveTabs)); }
 };
 window.rdfopTabInit = function(el) {
-  var tabgroups = el.querySelectorAll ? el.querySelectorAll('.rdfop-tabs') : document.querySelectorAll('.rdfop-tabs');
+  var tabgroups = el.querySelectorAll ? Array.from(el.querySelectorAll('.rdfop-tabs')) : Array.from(document.querySelectorAll('.rdfop-tabs'));
+  if (el.classList && el.classList.contains('rdfop-tabs')) tabgroups.unshift(el);
   tabgroups.forEach(function(t) {
     /* clean up stale drag indicators */
     t.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after,.rdfop-tabs__tab--dragging').forEach(function(d){d.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after','rdfop-tabs__tab--dragging')});
