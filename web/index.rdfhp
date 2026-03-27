@@ -287,12 +287,51 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
 
       window.rdfopDragReadUri = function(e) {
         if (!e || !e.dataTransfer) return null;
-        var raw = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '';
+        var raw =
+          e.dataTransfer.getData('text/uri-list') ||
+          e.dataTransfer.getData('text/x-moz-url-data') ||
+          e.dataTransfer.getData('text/x-moz-url') ||
+          e.dataTransfer.getData('text/plain') ||
+          '';
+        if (raw) {
+          raw = String(raw).split('\n').find(function(line) {
+            return line && line[0] !== '#';
+          }) || '';
+        }
+        if (!raw) {
+          var html = e.dataTransfer.getData('text/html') || '';
+          if (html) {
+            try {
+              var doc = new DOMParser().parseFromString(html, 'text/html');
+              var a = doc.querySelector('a[href]');
+              raw = a ? a.getAttribute('href') : '';
+            } catch (err) {
+              raw = '';
+            }
+          }
+        }
         if (!raw) return null;
-        raw = String(raw).split('\n').find(function(line) {
-          return line && line[0] !== '#';
-        }) || '';
         return window.rdfopDragNormalizeUri(raw);
+      };
+
+      window.rdfopDragDebug = function(tag, e, extra) {
+        try {
+          var dt = e && e.dataTransfer ? e.dataTransfer : null;
+          var payload = {
+            tag: tag,
+            type: e && e.type ? e.type : null,
+            kind: window.rdfopDragReadKind(e),
+            uri: window.rdfopDragReadUri(e),
+            viewId: window.rdfopDragReadViewId(e),
+            externalUrl: window.rdfopDragReadExternalUrl(e),
+            hasExternalType: window.rdfopDragHasExternalLinkType(e),
+            types: dt && dt.types ? Array.from(dt.types) : []
+          };
+          if (extra) Object.keys(extra).forEach(function(key) { payload[key] = extra[key]; });
+          console.log('[rdfop-dnd]', payload);
+        } catch (err) {
+          console.log('[rdfop-dnd]', tag, 'debug-error', err);
+        }
       };
 
       window.rdfopDragReadViewIdFromUri = function(uri) {
@@ -310,6 +349,23 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
 
       window.rdfopDragReadViewId = function(e) {
         return window.rdfopDragReadViewIdFromUri(window.rdfopDragReadUri(e));
+      };
+
+      window.rdfopDragReadExternalUrlFromUri = function(uri) {
+        var normalized = window.rdfopDragNormalizeUri(uri);
+        if (!normalized) return null;
+        try {
+          var parsed = new URL(normalized);
+          if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) return null;
+          if (parsed.origin === location.origin && /^\/view\/.+$/.test(parsed.pathname)) return null;
+          return parsed.toString();
+        } catch (e) {
+          return null;
+        }
+      };
+
+      window.rdfopDragReadExternalUrl = function(e) {
+        return window.rdfopDragReadExternalUrlFromUri(window.rdfopDragReadUri(e));
       };
 
       window.rdfopDragReadKind = function(e) {
@@ -331,6 +387,56 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
       window.rdfopDragHasLocalSource = function(uri) {
         var normalized = window.rdfopDragNormalizeUri(uri);
         return !!(normalized && window.__rdfopDragSession && window.__rdfopDragSession.uri === normalized);
+      };
+
+      window.rdfopDragHasExternalLinkType = function(e) {
+        if (!e || !e.dataTransfer || !e.dataTransfer.types) return false;
+        var types = Array.from(e.dataTransfer.types || []);
+        return types.includes('text/uri-list') ||
+          types.includes('text/x-moz-url') ||
+          types.includes('text/x-moz-url-data') ||
+          types.includes('text/plain');
+      };
+
+      window.rdfopDragCanDropComponent = function(e) {
+        var kind = window.rdfopDragReadKind(e);
+        if (kind && kind !== 'component') return false;
+        var uri = window.rdfopDragReadUri(e);
+        var result = false;
+        if (window.rdfopDragReadViewIdFromUri(uri) || window.rdfopDragReadExternalUrlFromUri(uri)) result = true;
+        else result = !kind && window.rdfopDragHasExternalLinkType(e);
+        window.rdfopDragDebug('can-drop-component', e, { result: result });
+        return result;
+      };
+
+      window.rdfopCreateDetachedWebsite = async function(url) {
+        if (!url) return null;
+        var id = 'urn:uuid:' + crypto.randomUUID();
+        console.log('[rdfop-dnd]', 'create-detached-website', { id: id, url: url });
+        await rdfopSave(
+          null,
+          '<' + id + '> a <https://launix.de/rdfop/schema#Website> .\n' +
+          '<' + id + '> <https://launix.de/rdfop/schema#url> ' + JSON.stringify(url) + ' .\n'
+        );
+        return id;
+      };
+
+      window.rdfopDragMaterializeDroppedComponent = async function(e) {
+        var uri = window.rdfopDragReadUri(e);
+        if (!uri) return null;
+        var id = window.rdfopDragReadViewIdFromUri(uri);
+        if (id) {
+          window.rdfopDragDebug('materialize-existing', e, { id: id });
+          return { uri: uri, id: id, externalUrl: null };
+        }
+        var externalUrl = window.rdfopDragReadExternalUrlFromUri(uri);
+        if (!externalUrl) return null;
+        window.rdfopDragDebug('materialize-external-url', e, { externalUrl: externalUrl });
+        return {
+          uri: uri,
+          id: await window.rdfopCreateDetachedWebsite(externalUrl),
+          externalUrl: externalUrl
+        };
       };
 
       window.rdfopDragStartLink = function(e, link, meta){

@@ -165,10 +165,14 @@ function _rdfopSelectorDropZone(e, el) {
 }
 function _rdfopSelectorDropData(e) {
   var uri = rdfopDragReadUri(e);
+  var externalUrl = uri ? rdfopDragReadExternalUrlFromUri(uri) : null;
+  var kind = rdfopDragReadKind(e);
+  if (!kind && (externalUrl || rdfopDragHasExternalLinkType(e))) kind = 'component';
   return {
-    kind: rdfopDragReadKind(e),
+    kind: kind,
     uri: uri,
-    id: uri ? rdfopDragReadViewIdFromUri(uri) : null
+    id: uri ? rdfopDragReadViewIdFromUri(uri) : null,
+    externalUrl: externalUrl
   };
 }
 window.rdfopSelectorDragStart = function(e, btn) {
@@ -195,15 +199,23 @@ window.rdfopSelectorDragEnd = function() {
 };
 window.rdfopSelectorDragOver = function(e, el) {
   var data = _rdfopSelectorDropData(e);
-  if (!data.id || data.kind !== 'component') return;
-  e.preventDefault();
-  e.stopPropagation();
-  e.dataTransfer.dropEffect = 'move';
+  rdfopDragDebug('selector-dragover', e, {
+    targetTestId: el && el.dataset ? el.dataset.testid : null,
+    targetSelected: el && el.dataset ? el.dataset.selected : null,
+    dataId: data.id,
+    dataExternalUrl: data.externalUrl,
+    dataKind: data.kind
+  });
+  if (data.kind !== 'component') return;
+  if (!data.id && !data.externalUrl && !rdfopDragHasExternalLinkType(e)) return;
+  if (data.externalUrl && !el.classList.contains('rdfop-palette')) return;
   var inner = e.target.closest('.rdfop-selector--filled, .rdfop-palette');
   if (inner && inner !== el && el.contains(inner)) {
-    rdfopSelectorClearDropClasses(el);
     return;
   }
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
   if (el.dataset && el.dataset.selected === data.id) return;
   document.querySelectorAll('[class*="rdfop-selector--drop-"],[class*="rdfop-palette--drop-"]').forEach(rdfopSelectorClearDropClasses);
   if (el.classList.contains('rdfop-palette')) el.classList.add('rdfop-palette--drop-target');
@@ -213,12 +225,16 @@ window.rdfopSelectorPaletteDrop = async function(e, el) {
   e.preventDefault();
   e.stopPropagation();
   rdfopSelectorClearDropClasses(el);
-  var data = _rdfopSelectorDropData(e);
-  if (!data.id || data.kind !== 'component') return;
+  rdfopDragDebug('selector-palette-drop-start', e, {
+    targetTestId: el && el.dataset ? el.dataset.testid : null
+  });
+  var data = await rdfopDragMaterializeDroppedComponent(e);
+  console.log('[rdfop-dnd]', 'selector-palette-drop-data', data);
+  if (!data || !data.id) return;
   rdfopDragMarkDropped(data.uri);
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   await rdfopSelectorAssign(p.id, data.id, null);
-  if (!rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {leaveSourcePalette: true});
+  if (!data.externalUrl && !rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {leaveSourcePalette: true});
   await rdfopDragFinish(data.uri, {leaveSourcePalette: true});
   await rdfopSwap(el, 'view');
 };
@@ -256,18 +272,26 @@ window.rdfopSelectorFilledDrop = async function(e, el) {
   var inner = e.target.closest('.rdfop-selector--filled, .rdfop-palette');
   if (inner && inner !== el && el.contains(inner)) el = inner;
   rdfopSelectorClearDropClasses(el);
-  var data = _rdfopSelectorDropData(e);
-  if (!data.id || data.kind !== 'component') return;
+  rdfopDragDebug('selector-filled-drop-start', e, {
+    targetTestId: el && el.dataset ? el.dataset.testid : null
+  });
+  var data = await rdfopDragMaterializeDroppedComponent(e);
+  console.log('[rdfop-dnd]', 'selector-filled-drop-data', data);
+  if (!data || !data.id) return;
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   var tgtSel = el.dataset.selected;
   var zone = _rdfopSelectorDropZone(e, el);
   if (!tgtSel || data.id === tgtSel) return;
   rdfopDragMarkDropped(data.uri);
   if (zone === 'center') {
-    if (!rdfopDragHasLocalSource(data.uri) && !rdfopDragReadSource(e)) return;
     await rdfopSelectorAssign(p.id, data.id, tgtSel);
-    if (!rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {replacementId: tgtSel});
-    await rdfopDragFinish(data.uri, {replacementId: tgtSel});
+    if (!data.externalUrl) {
+      if (!rdfopDragHasLocalSource(data.uri) && !rdfopDragReadSource(e)) return;
+      if (!rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {replacementId: tgtSel});
+      await rdfopDragFinish(data.uri, {replacementId: tgtSel});
+    } else {
+      await rdfopDragFinish(data.uri, {});
+    }
     await rdfopSwap(el, 'view');
     return;
   }
@@ -379,6 +403,27 @@ try {
   await expect(helpers.byId(split)).toHaveCount(0);
   await expect(helpers.byId(leftSel)).toHaveCount(0);
   await expect(helpers.byId(rightSel)).toHaveCount(0);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_component_selector_external_url_to_palette_creates_website a rdfop:PlaywrightTest ;
+  rdfs:label "External URL dropped into a palette creates a Website component" ;
+  rdfop:testFor rdfop:ComponentSelector ;
+  rdfop:order "18" ;
+  rdfop:playwright """
+const root = helpers.id();
+const url = 'https://example.com/docs';
+await helpers.insert([
+  `${helpers.sid(root)} a <${helpers.S}ComponentSelector> .`
+].join('\\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragExternalUrlToPalette(root, url);
+  const selected = await helpers.byId(root).getAttribute('data-selected');
+  expect(selected).toBeTruthy();
+  await expect(helpers.byId(root).locator('.rdfop-website iframe')).toHaveAttribute('src', url);
 } finally {
   await helpers.cleanup(root);
 }

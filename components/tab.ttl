@@ -330,8 +330,11 @@ window.rdfopTabsBarDropPosition = function(e, bar) {
   return {after: allTabs[allTabs.length - 1]};
 };
 window.rdfopTabsBarDragOver = function(e, bar) {
+  rdfopDragDebug('tabs-bar-dragover', e, {
+    tabCount: bar ? bar.querySelectorAll('.rdfop-tabs__tab').length : null
+  });
   if (rdfopTabsCanReorderInto(e, bar.closest('.rdfop-c'))) return;
-  if (rdfopDragReadKind(e) !== 'component') return;
+  if (!rdfopDragCanDropComponent(e)) return;
   e.preventDefault();
   e.stopPropagation();
   bar.classList.remove('rdfop-tabs__bar--drop-target');
@@ -346,6 +349,9 @@ window.rdfopTabsBarDragOver = function(e, bar) {
 window.rdfopTabsBarDrop = async function(e, bar) {
   e.preventDefault();
   e.stopPropagation();
+  rdfopDragDebug('tabs-bar-drop-start', e, {
+    tabCount: bar ? bar.querySelectorAll('.rdfop-tabs__tab').length : null
+  });
   bar.classList.remove('rdfop-tabs__bar--drop-target');
   bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
     t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
@@ -366,10 +372,11 @@ window.rdfopTabsBarDrop = async function(e, bar) {
     }, 0);
     return;
   }
-  if (rdfopDragReadKind(e) !== 'component') return;
-  var uri = rdfopDragReadUri(e);
-  var contentId = uri ? rdfopDragReadViewIdFromUri(uri) : null;
-  if (!contentId) return;
+  var data = await rdfopDragMaterializeDroppedComponent(e);
+  console.log('[rdfop-dnd]', 'tabs-bar-drop-data', data);
+  if (!data || !data.id) return;
+  var uri = data.uri;
+  var contentId = data.id;
   rdfopDragMarkDropped(uri);
   var pos = rdfopTabsBarDropPosition(e, bar);
   var tabGroupP = JSON.parse(tabs.dataset.rdfopParams || '{}');
@@ -398,7 +405,7 @@ window.rdfopTabsBarDrop = async function(e, bar) {
     orderedIds.push(newTabId);
   }
   await rdfopTabsPersistOrder(tabs, orderedIds);
-  if (!rdfopDragHasLocalSource(uri)) await rdfopDragCleanupSource(e, {});
+  if (!data.externalUrl && !rdfopDragHasLocalSource(uri)) await rdfopDragCleanupSource(e, {});
   await rdfopDragFinish(uri, {});
   await rdfopSwap(tabs, 'view');
   setTimeout(function() {
@@ -435,7 +442,7 @@ window.rdfopTabsReorderOver = function(e) {
   if (!tab) return;
   var tabs = tab.closest('.rdfop-c');
   if (!rdfopTabsCanReorderInto(e, tabs)) {
-    if (rdfopDragReadKind(e) !== 'component') return;
+    if (!rdfopDragCanDropComponent(e)) return;
     var bar = tab.closest('.rdfop-tabs__bar');
     if (bar) rdfopTabsBarDragOver(e, bar);
     return;
@@ -458,7 +465,7 @@ window.rdfopTabsReorderDrop = async function(e) {
   if (!targetTab) return;
   var tabs = targetTab.closest('.rdfop-c');
   if (!rdfopTabsCanReorderInto(e, tabs)) {
-    if (rdfopDragReadKind(e) !== 'component') return;
+    if (!rdfopDragCanDropComponent(e)) return;
     var bar = targetTab.closest('.rdfop-tabs__bar');
     if (bar) await rdfopTabsBarDrop(e, bar);
     return;
@@ -763,6 +770,47 @@ try {
   expect(tabIds[0]).toBe(tabA);
   expect(tabIds[2]).toBe(tabB);
   expect(tabIds).not.toContain(tabSource);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_external_url_to_tab_header_creates_website_tab a rdfop:PlaywrightTest ;
+  rdfs:label "External URL dropped onto a tab header creates a Website tab at that position" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "56" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const selA = helpers.id();
+const selB = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+const url = 'https://example.com/spec';
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabA, 'Alpha', '1', selA),
+  helpers.tab(group, tabB, 'Beta', '2', selB),
+  helpers.selector(selA, leafA),
+  helpers.selector(selB, leafB),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+].join('\\n'));
+try {
+  await helpers.goto(root);
+  await helpers.byId(group).waitFor({ state: 'attached' });
+  await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta']);
+  await helpers.dragExternalUrlToTabHeader(tabB, url, 'before');
+  await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Website', 'Beta']);
+  const tabIds = await helpers.tabIds(group);
+  expect(tabIds).toHaveLength(3);
+  expect(tabIds[0]).toBe(tabA);
+  expect(tabIds[2]).toBe(tabB);
+  await helpers.clickTab(tabIds[1]);
+  await expect(helpers.panelById(tabIds[1]).locator('.rdfop-website iframe')).toHaveAttribute('src', url);
 } finally {
   await helpers.cleanup(root);
 }

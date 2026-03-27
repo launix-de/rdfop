@@ -173,6 +173,40 @@ export function createHelpers({ page, request, baseURL }) {
       await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
       await page.waitForTimeout(250);
     },
+    async dragExternalUrlToPalette(targetSelectorId, url) {
+      const target = this.byId(targetSelectorId);
+      await target.waitFor({ state: 'attached' });
+      const box = await target.boundingBox();
+      if (!box) throw new Error(`missing bounding box for ${targetSelectorId}`);
+      const clientX = box.x + box.width / 2;
+      const clientY = box.y + box.height / 2;
+      const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+      await dataTransfer.evaluate((dt, payload) => {
+        dt.setData('text/uri-list', payload.url);
+        dt.setData('text/plain', payload.url);
+      }, { url });
+      await target.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
+      await target.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
+      await target.dispatchEvent('drop', { dataTransfer, clientX, clientY });
+      await page.waitForTimeout(250);
+    },
+    async dragExternalUrlToTabHeader(targetTabId, url, side = 'before') {
+      const targetTab = this.tabById(targetTabId);
+      await targetTab.waitFor({ state: 'attached' });
+      const box = await targetTab.boundingBox();
+      if (!box) throw new Error(`missing bounding box for tab ${targetTabId}`);
+      const clientX = side === 'after' ? (box.x + box.width - 4) : (box.x + 4);
+      const clientY = box.y + box.height / 2;
+      const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+      await dataTransfer.evaluate((dt, payload) => {
+        dt.setData('text/uri-list', payload.url);
+        dt.setData('text/plain', payload.url);
+      }, { url });
+      await targetTab.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
+      await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
+      await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
+      await page.waitForTimeout(1000);
+    },
     async reorderTab(dragTabId, targetTabId, side = 'before') {
       const dragTab = this.tabById(dragTabId);
       const targetTab = this.tabById(targetTabId);
