@@ -334,10 +334,14 @@ window.rdfopTabsBarDragOver = function(e, bar) {
   if (rdfopDragReadKind(e) !== 'component') return;
   e.preventDefault();
   e.stopPropagation();
+  bar.classList.remove('rdfop-tabs__bar--drop-target');
   bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
     t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
   });
-  bar.classList.add('rdfop-tabs__bar--drop-target');
+  var pos = rdfopTabsBarDropPosition(e, bar);
+  if (pos.before) pos.before.classList.add('rdfop-tabs__tab--dragover-before');
+  else if (pos.after) pos.after.classList.add('rdfop-tabs__tab--dragover-after');
+  else bar.classList.add('rdfop-tabs__bar--drop-target');
 };
 window.rdfopTabsBarDrop = async function(e, bar) {
   e.preventDefault();
@@ -367,6 +371,7 @@ window.rdfopTabsBarDrop = async function(e, bar) {
   var contentId = uri ? rdfopDragReadViewIdFromUri(uri) : null;
   if (!contentId) return;
   rdfopDragMarkDropped(uri);
+  var pos = rdfopTabsBarDropPosition(e, bar);
   var tabGroupP = JSON.parse(tabs.dataset.rdfopParams || '{}');
   var resp = await fetch('/rdfop-create', {
     method:'POST',
@@ -385,8 +390,15 @@ window.rdfopTabsBarDrop = async function(e, bar) {
   var orderedIds = Array.from(bar.querySelectorAll('.rdfop-tabs__tab')).map(function(tab) {
     return tab.dataset.tabId;
   });
-  orderedIds.push(newTabId);
+  if (pos.before) {
+    orderedIds.splice(Math.max(0, orderedIds.indexOf(pos.before.dataset.tabId)), 0, newTabId);
+  } else if (pos.after) {
+    orderedIds.splice(orderedIds.indexOf(pos.after.dataset.tabId) + 1, 0, newTabId);
+  } else {
+    orderedIds.push(newTabId);
+  }
   await rdfopTabsPersistOrder(tabs, orderedIds);
+  if (!rdfopDragHasLocalSource(uri)) await rdfopDragCleanupSource(e, {});
   await rdfopDragFinish(uri, {});
   await rdfopSwap(tabs, 'view');
   setTimeout(function() {
@@ -401,6 +413,12 @@ window.rdfopTabsReorderStart = function(e) {
   var groupId = tabs ? JSON.parse(tabs.dataset.rdfopParams || '{}').id : null;
   rdfopDragStartLink(e, tab, {
     kind: 'component',
+    sourcePayload: {
+      kind: 'tab',
+      tabId: tab.dataset.tabId || '',
+      childId: tab.dataset.childId || '',
+      contentId: tab.dataset.contentId || tab.dataset.childId || ''
+    },
     handleSameWindowDrop: async function(result) {
       await rdfopTabsHandleSameWindowDrop(tab, result || {});
     }
@@ -416,7 +434,12 @@ window.rdfopTabsReorderOver = function(e) {
   var tab = e.target.closest('.rdfop-tabs__tab');
   if (!tab) return;
   var tabs = tab.closest('.rdfop-c');
-  if (!rdfopTabsCanReorderInto(e, tabs)) return;
+  if (!rdfopTabsCanReorderInto(e, tabs)) {
+    if (rdfopDragReadKind(e) !== 'component') return;
+    var bar = tab.closest('.rdfop-tabs__bar');
+    if (bar) rdfopTabsBarDragOver(e, bar);
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   tab.classList.remove('rdfop-tabs__tab--dragover-before', 'rdfop-tabs__tab--dragover-after');
@@ -434,7 +457,12 @@ window.rdfopTabsReorderDrop = async function(e) {
   var targetTab = e.target.closest('.rdfop-tabs__tab');
   if (!targetTab) return;
   var tabs = targetTab.closest('.rdfop-c');
-  if (!rdfopTabsCanReorderInto(e, tabs)) return;
+  if (!rdfopTabsCanReorderInto(e, tabs)) {
+    if (rdfopDragReadKind(e) !== 'component') return;
+    var bar = targetTab.closest('.rdfop-tabs__bar');
+    if (bar) await rdfopTabsBarDrop(e, bar);
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   rdfopDragMarkDropped();
@@ -685,6 +713,56 @@ try {
   await expect(helpers.tabLabels(group)).toHaveText(['Gamma', 'Alpha', 'Beta']);
   await page.reload();
   await expect(helpers.tabLabels(group)).toHaveText(['Gamma', 'Alpha', 'Beta']);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_external_palette_to_tab_header_inserts_and_cleans_source a rdfop:PlaywrightTest ;
+  rdfs:label "External palette drop onto a tab header inserts there and cleans up the source tab" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "55" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabSource = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const selSource = helpers.id();
+const selA = helpers.id();
+const selB = helpers.id();
+const leafSource = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabSource, 'Source', '1', selSource),
+  helpers.tab(group, tabA, 'Alpha', '2', selA),
+  helpers.tab(group, tabB, 'Beta', '3', selB),
+  helpers.selector(selSource, leafSource),
+  helpers.selector(selA, leafA),
+  helpers.selector(selB, leafB),
+  helpers.htmlView(leafSource, 'Source'),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+].join('\\n'));
+try {
+  await helpers.goto(root);
+  await helpers.byId(group).waitFor({ state: 'attached' });
+  await expect(helpers.tabLabels(group)).toHaveText(['Source', 'Alpha', 'Beta']);
+  await helpers.dragExternalComponentToTabHeader({
+    contentId: leafSource,
+    sourcePayload: { kind: 'selector', selectorId: selSource, contentId: leafSource },
+    targetTabId: tabB,
+    side: 'before'
+  });
+  await expect(helpers.tabById(tabSource)).toHaveCount(0);
+  const tabIds = await helpers.tabIds(group);
+  expect(tabIds).toHaveLength(3);
+  expect(tabIds[0]).toBe(tabA);
+  expect(tabIds[2]).toBe(tabB);
+  expect(tabIds).not.toContain(tabSource);
 } finally {
   await helpers.cleanup(root);
 }

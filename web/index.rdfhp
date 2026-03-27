@@ -317,6 +317,17 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         return e.dataTransfer.getData('application/x-rdfop-kind') || null;
       };
 
+      window.rdfopDragReadSource = function(e) {
+        if (!e || !e.dataTransfer) return null;
+        var raw = e.dataTransfer.getData('application/x-rdfop-source') || '';
+        if (!raw) return null;
+        try {
+          return JSON.parse(raw);
+        } catch (err) {
+          return null;
+        }
+      };
+
       window.rdfopDragHasLocalSource = function(uri) {
         var normalized = window.rdfopDragNormalizeUri(uri);
         return !!(normalized && window.__rdfopDragSession && window.__rdfopDragSession.uri === normalized);
@@ -331,6 +342,9 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         e.dataTransfer.setData('text/uri-list', uri);
         e.dataTransfer.setData('text/plain', uri);
         e.dataTransfer.setData('application/x-rdfop-kind', (meta && meta.kind) || 'component');
+        if (meta && meta.sourcePayload) {
+          e.dataTransfer.setData('application/x-rdfop-source', JSON.stringify(meta.sourcePayload));
+        }
         window.__rdfopDragSession = {
           uri: uri,
           dropped: false,
@@ -349,6 +363,25 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           if (!normalized || session.uri !== normalized) return false;
         }
         session.dropped = true;
+        return true;
+      };
+
+      window.rdfopDragCleanupSource = async function(e, result) {
+        var source = window.rdfopDragReadSource(e);
+        if (!source || (result && result.reordered)) return false;
+        var params = new URLSearchParams();
+        Object.keys(source).forEach(function(key) {
+          var value = source[key];
+          if (value === null || typeof value === 'undefined' || value === '') return;
+          params.set('source' + key.charAt(0).toUpperCase() + key.slice(1), String(value));
+        });
+        if (result && result.leaveSourcePalette) params.set('leaveSourcePalette', 'true');
+        if (result && result.replacementId) params.set('replacementId', String(result.replacementId));
+        await fetch('/rdfop-source-cleanup', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: params.toString()
+        });
         return true;
       };
 

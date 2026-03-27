@@ -60,14 +60,19 @@ export function createHelpers({ page, request, baseURL }) {
     tabLabels(groupId) {
       return this.byId(groupId).locator('.rdfop-tabs__tab .rdfop-textedit');
     },
+    tabIds(groupId) {
+      return this.byId(groupId).locator('.rdfop-tabs__tab').evaluateAll(nodes =>
+        nodes.map(node => node.getAttribute('data-tab-id'))
+      );
+    },
     async clickTab(tabId) {
       await this.tabById(tabId).click();
     },
     async dragComponent(sourceSelectorId, targetSelectorId, zone = 'center') {
       const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
       const target = this.byId(targetSelectorId);
-      await source.waitFor();
-      await target.waitFor();
+      await source.waitFor({ state: 'attached' });
+      await target.waitFor({ state: 'attached' });
       const box = await target.boundingBox();
       if (!box) throw new Error(`missing bounding box for ${targetSelectorId}`);
       let clientX = box.x + box.width / 2;
@@ -87,14 +92,14 @@ export function createHelpers({ page, request, baseURL }) {
     async dragComponentViaTab(sourceSelectorId, hoverTabId, targetSelectorId, zone = 'center', hoverMs = 900) {
       const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
       const hoverTab = this.tabById(hoverTabId);
-      await source.waitFor();
-      await hoverTab.waitFor();
+      await source.waitFor({ state: 'attached' });
+      await hoverTab.waitFor({ state: 'attached' });
       const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
       await source.dispatchEvent('dragstart', { dataTransfer });
       await hoverTab.dispatchEvent('dragover', { dataTransfer });
       await page.waitForTimeout(hoverMs);
       const target = this.byId(targetSelectorId);
-      await target.waitFor();
+      await target.waitFor({ state: 'attached' });
       const box = await target.boundingBox();
       if (!box) throw new Error(`missing bounding box for ${targetSelectorId}`);
       let clientX = box.x + box.width / 2;
@@ -112,8 +117,8 @@ export function createHelpers({ page, request, baseURL }) {
     async dragComponentToTabBar(sourceSelectorId, groupId) {
       const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
       const bar = this.byId(groupId).locator('.rdfop-tabs__bar');
-      await source.waitFor();
-      await bar.waitFor();
+      await source.waitFor({ state: 'attached' });
+      await bar.waitFor({ state: 'attached' });
       const box = await bar.boundingBox();
       if (!box) throw new Error(`missing bounding box for tab bar ${groupId}`);
       const clientX = box.x + box.width - 10;
@@ -126,11 +131,53 @@ export function createHelpers({ page, request, baseURL }) {
       await source.dispatchEvent('dragend', { dataTransfer });
       await page.waitForTimeout(200);
     },
+    async dragComponentToTabHeader(sourceSelectorId, targetTabId) {
+      const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
+      const targetTab = this.tabById(targetTabId);
+      await source.waitFor({ state: 'attached' });
+      await targetTab.waitFor({ state: 'attached' });
+      const box = await targetTab.boundingBox();
+      if (!box) throw new Error(`missing bounding box for tab ${targetTabId}`);
+      const clientX = box.x + box.width / 2;
+      const clientY = box.y + box.height / 2;
+      const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+      await source.dispatchEvent('dragstart', { dataTransfer });
+      await targetTab.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
+      await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
+      await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
+      await source.dispatchEvent('dragend', { dataTransfer });
+      await page.waitForTimeout(200);
+    },
+    async dragExternalComponentToTabHeader({ contentId, sourcePayload, targetTabId, side = 'before', tabLabel = '' }) {
+      const targetTab = this.tabById(targetTabId);
+      await targetTab.waitFor({ state: 'attached' });
+      const box = await targetTab.boundingBox();
+      if (!box) throw new Error(`missing bounding box for tab ${targetTabId}`);
+      const clientX = side === 'after' ? (box.x + box.width - 4) : (box.x + 4);
+      const clientY = box.y + box.height / 2;
+      const uri = `${baseURL}/view/${encodeURIComponent(contentId)}`;
+      const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+      await dataTransfer.evaluate((dt, payload) => {
+        dt.setData('text/uri-list', payload.uri);
+        dt.setData('text/plain', payload.uri);
+        dt.setData('application/x-rdfop-kind', 'component');
+        if (payload.sourcePayload) {
+          dt.setData('application/x-rdfop-source', JSON.stringify(payload.sourcePayload));
+        }
+        if (payload.tabLabel) {
+          dt.setData('application/x-rdfop-tab-label', payload.tabLabel);
+        }
+      }, { uri, sourcePayload, tabLabel });
+      await targetTab.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
+      await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
+      await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
+      await page.waitForTimeout(250);
+    },
     async reorderTab(dragTabId, targetTabId, side = 'before') {
       const dragTab = this.tabById(dragTabId);
       const targetTab = this.tabById(targetTabId);
-      await dragTab.waitFor();
-      await targetTab.waitFor();
+      await dragTab.waitFor({ state: 'attached' });
+      await targetTab.waitFor({ state: 'attached' });
       const box = await targetTab.boundingBox();
       if (!box) throw new Error(`missing bounding box for tab ${targetTabId}`);
       const clientX = side === 'after' ? (box.x + box.width - 4) : (box.x + 4);

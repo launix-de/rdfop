@@ -116,7 +116,7 @@ window.rdfopSelectorDispatchChildRemoved = function(el) {
   el.dispatchEvent(new CustomEvent('rdfop:layoutChildRemoved', {bubbles: true}));
 };
 window.rdfopSelectorHandleSameWindowDrop = async function(el, contentId, result) {
-  var replacementId = result && result.replacementUri ? rdfopDragReadViewIdFromUri(result.replacementUri) : null;
+  var replacementId = result && result.replacementId ? result.replacementId : null;
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   if (result && result.leaveSourcePalette) {
     await rdfopSelectorAssign(p.id, null, contentId);
@@ -173,10 +173,16 @@ function _rdfopSelectorDropData(e) {
 }
 window.rdfopSelectorDragStart = function(e, btn) {
   var el = btn.closest('.rdfop-selector--filled');
+  var p = JSON.parse(el.dataset.rdfopParams || '{}');
   var contentId = el.dataset.selected;
   if (!contentId) return false;
   rdfopDragStartLink(e, btn, {
     kind: 'component',
+    sourcePayload: {
+      kind: 'selector',
+      selectorId: p.id,
+      contentId: contentId
+    },
     handleSameWindowDrop: async function(result) {
       await rdfopSelectorHandleSameWindowDrop(el, contentId, result || {});
     }
@@ -212,6 +218,7 @@ window.rdfopSelectorPaletteDrop = async function(e, el) {
   rdfopDragMarkDropped(data.uri);
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   await rdfopSelectorAssign(p.id, data.id, null);
+  if (!rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {leaveSourcePalette: true});
   await rdfopDragFinish(data.uri, {leaveSourcePalette: true});
   await rdfopSwap(el, 'view');
 };
@@ -257,13 +264,15 @@ window.rdfopSelectorFilledDrop = async function(e, el) {
   if (!tgtSel || data.id === tgtSel) return;
   rdfopDragMarkDropped(data.uri);
   if (zone === 'center') {
-    if (!rdfopDragHasLocalSource(data.uri)) return;
+    if (!rdfopDragHasLocalSource(data.uri) && !rdfopDragReadSource(e)) return;
     await rdfopSelectorAssign(p.id, data.id, tgtSel);
-    await rdfopDragFinish(data.uri, {replacementUri: rdfopViewHref(tgtSel)});
+    if (!rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {replacementId: tgtSel});
+    await rdfopDragFinish(data.uri, {replacementId: tgtSel});
     await rdfopSwap(el, 'view');
     return;
   }
   if (!await rdfopSelectorCreateSplit(p.id, tgtSel, data.id, zone)) return;
+  if (!rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {});
   await rdfopDragFinish(data.uri, {});
   await rdfopSwap(el, 'view');
 };

@@ -260,6 +260,62 @@ END
     (_emit_component_asset "https://launix.de/rdfop/schema#js" req res)
 ))
 
+(define _parse_urlencoded_body (lambda (body_raw) (begin
+    (set bp (newsession))
+    (if (not (nil? body_raw)) (map (split body_raw "&") (lambda (pair) (begin
+        (set parts (split pair "="))
+        (set k (urldecode (replace (car parts) "+" " ")))
+        (set v (urldecode (replace (coalesce (car (cdr parts)) "") "+" " ")))
+        (bp k v)
+    ))))
+    bp
+)))
+
+(define _rdf_ref (lambda (id)
+    (if (or (nil? id) (equal? id "")) nil
+        (if (match (concat id) (regex ":" _) true false) (concat "<" id ">") id)
+    )
+))
+
+(define _query_single_value (lambda (sparql var_name) (begin
+    (set _one (newsession))
+    (try (lambda () (begin
+        (define resultrow (lambda (row) (_one "v" (row var_name))))
+        (eval (parse_sparql "rdf" sparql))
+    )) (lambda (e) nil))
+    (_one "v")
+)))
+
+(define _selector_assign_server (lambda (selector_id next_id prev_id) (begin
+    (set sid (_rdf_ref selector_id))
+    (set del_ttl "")
+    (set ins_ttl "")
+    (if (and (not (nil? sid)) (not (nil? prev_id))) (begin
+        (set del_ttl (concat del_ttl sid " <https://launix.de/rdfop/schema#selectedNode> " (_rdf_ref prev_id) " .\n"))
+        (set del_ttl (concat del_ttl sid " <https://launix.de/rdfop/schema#children> " (_rdf_ref prev_id) " .\n"))
+    ))
+    (if (and (not (nil? sid)) (not (nil? next_id))) (begin
+        (set ins_ttl (concat ins_ttl sid " <https://launix.de/rdfop/schema#selectedNode> " (_rdf_ref next_id) " .\n"))
+        (set ins_ttl (concat ins_ttl sid " <https://launix.de/rdfop/schema#children> " (_rdf_ref next_id) " .\n"))
+    ))
+    (if (not (equal? del_ttl "")) (delete_ttl "rdf" del_ttl))
+    (if (not (equal? ins_ttl "")) (load_ttl "rdf" ins_ttl))
+)))
+
+(define _find_parent_by_child (lambda (child_id)
+    (_query_single_value (concat "SELECT ?parent WHERE { ?parent <https://launix.de/rdfop/schema#children> " (_rdf_ref child_id) " } LIMIT 1") "?parent")
+))
+
+(define _selector_remove_content_server (lambda (selector_id content_id) (begin
+    (_selector_assign_server selector_id nil content_id)
+    (set parent_id (_find_parent_by_child selector_id))
+    (if (not (nil? parent_id)) (begin
+        (set _params (newsession))
+        (_params "child" selector_id)
+        (_dispatch_action "onChildRemoved" parent_id _params nil)
+    ))
+)))
+
 /* === Component rendering ===
    render_component(component_iri, req, res)
      — the core: looks up template by component IRI, renders with req params
@@ -435,6 +491,55 @@ END
     )))
     (eval (parse_sparql "rdf" "SELECT ?id WHERE { ?id a <https://launix.de/rdfop/schema#PlaywrightTest> }"))
     ((res "print") "]")
+)))
+
+/* POST /rdfop-source-cleanup — server-side cleanup of the drag source.
+   This is used by receivers so moves also work across windows/contexts. */
+(rdfop_routes "/rdfop-source-cleanup" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/plain")
+    (set bp (_parse_urlencoded_body (try (lambda () ((req "body"))) (lambda (e) ""))))
+    (set source_kind (bp "sourceKind"))
+    (set selector_id (bp "sourceSelectorId"))
+    (set tab_id (bp "sourceTabId"))
+    (set child_id (bp "sourceChildId"))
+    (set content_id (bp "sourceContentId"))
+    (set replacement_id (bp "replacementId"))
+    (set leave_source_palette (or (equal? (bp "leaveSourcePalette") "true") (equal? (bp "leaveSourcePalette") "1")))
+    (if (equal? source_kind "selector") (begin
+        (if (or (nil? selector_id) (nil? content_id)) (begin
+            ((res "status") 400)
+            ((res "print") "missing selector source")
+        ) (begin
+            (if leave_source_palette
+                (_selector_assign_server selector_id nil content_id)
+                (if (and (not (nil? replacement_id)) (not (equal? replacement_id content_id)))
+                    (_selector_assign_server selector_id replacement_id content_id)
+                    (_selector_remove_content_server selector_id content_id)
+                )
+            )
+            ((res "status") 200)
+            ((res "print") "ok")
+        ))
+    ) (if (equal? source_kind "tab") (begin
+        (if (or (nil? tab_id) (nil? child_id) (nil? content_id)) (begin
+            ((res "status") 400)
+            ((res "print") "missing tab source")
+        ) (begin
+            (if (and leave_source_palette (not (equal? child_id content_id)))
+                (_selector_assign_server child_id nil content_id)
+                (if (equal? child_id content_id) (begin
+                    (set _params (newsession))
+                    (_params "child" child_id)
+                    (_dispatch_action "onChildRemoved" tab_id _params nil)
+                ) (_selector_remove_content_server child_id content_id))
+            )
+            ((res "status") 200)
+            ((res "print") "ok")
+        ))
+    ) (begin
+        ((res "status") 400)
+        ((res "print") "missing or unknown sourceKind")
+    )))
 )))
 
 /* POST /rdfop-create — create a new node: parent=ID&type=Tab (returns new node id) */

@@ -15,14 +15,22 @@ function sortTests(cases) {
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
 test('embedded RDF Playwright suite', async ({ page, request, baseURL }) => {
+  test.setTimeout(120000);
   const resp = await request.get(`${baseURL}/rdfop-playwright-tests`);
   expect(resp.ok()).toBeTruthy();
   const cases = sortTests(await resp.json());
-  const helpers = createHelpers({ page, request, baseURL });
   for (const tc of cases) {
     await test.step(tc.label || tc.id, async () => {
+      const browser = page.context().browser();
+      const caseContext = await browser.newContext();
+      const casePage = await caseContext.newPage();
+      const helpers = createHelpers({ page: casePage, request, baseURL });
       const run = new AsyncFunction('page', 'request', 'expect', 'helpers', 'baseURL', tc.code);
-      await run(page, request, expect, helpers, baseURL);
+      try {
+        await run(casePage, request, expect, helpers, baseURL);
+      } finally {
+        await caseContext.close();
+      }
     });
   }
 });
