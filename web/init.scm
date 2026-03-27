@@ -33,6 +33,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (set schema_file (arg "schema" "../components.ttl"))
 (set _schema_dir (path schema_file "..")) /* directory containing the schema file */
 (set _include_watchers (newsession)) /* map: filename -> old ttl content */
+(set _include_unwatch (newsession)) /* map: filename -> unwatch callback */
 
 /* startup cleanup: schema triples persist in the DB across restarts, so clear them
    before reloading the current component set */
@@ -53,14 +54,14 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (if (not (nil? (_include_watchers filename))) nil /* already watching */
         (begin
             (_include_watchers filename "")
-            (watch filepath (lambda (content) (begin
+            (_include_unwatch filename (watch filepath (lambda (content) (begin
                 (set old (_include_watchers filename))
                 (if (and (not (nil? old)) (not (equal? old "")))
                     (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "include delete error (" filename "): " e)))
                 )
                 (try (lambda () (begin (load_ttl "rdf" content) (_include_watchers filename content) (print filename " reloaded")))
                      (lambda (e) (print filename " load error: " e)))
-            )))
+            ))))
             (print "watching " filename)
         )
     )
@@ -68,11 +69,16 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 /* remove a watcher: delete its triples from the store */
 (define _remove_include (lambda (filename) (begin
+    (set unwatch (_include_unwatch filename))
+    (if (not (nil? unwatch))
+        (try (lambda () (unwatch)) (lambda (e) (print "include unwatch error (" filename "): " e)))
+    )
     (set old (_include_watchers filename))
     (if (and (not (nil? old)) (not (equal? old "")))
         (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "include remove error (" filename "): " e)))
     )
     (_include_watchers filename nil)
+    (_include_unwatch filename nil)
     (print "unwatched " filename)
 )))
 
@@ -102,6 +108,18 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (createtrigger "rdf" "rdf" "rdfop_include_delete" "after_delete" "" (lambda (old new)
     (if (equal? (old "p") "https://launix.de/rdfop/schema#include")
         (_remove_include (old "o"))
+    )
+) false)
+
+(droptrigger "rdf" "rdfop_include_update" true)
+(createtrigger "rdf" "rdf" "rdfop_include_update" "after_update" "" (lambda (old new)
+    (begin
+        (if (equal? (old "p") "https://launix.de/rdfop/schema#include")
+            (_remove_include (old "o"))
+        )
+        (if (equal? (new "p") "https://launix.de/rdfop/schema#include")
+            (_deploy_include_watcher (new "o"))
+        )
     )
 ) false)
 
@@ -184,30 +202,6 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
         (define formula (_compile_tpl tpl))
         (eval formula)
     )) (lambda (e) (print (concat "<div class='error'>Template error: <b>" (htmlentities e) "</b></div>"))))
-)))
-
-/* rdfop_action(actionName, entityId, extraKey, extraVal, req, res)
-   generic action dispatch — looks up rdfop:<actionName> on entity's type,
-   executes RDFHP snippet with ?id=entityId and ?<extraKey>=extraVal */
-(rdf_functions "rdfop_action" (lambda (action_name entity_id extra_key extra_val req res) (begin
-    (set sparql_id (if (match (concat entity_id) (regex ":" _) true false) (concat "<" entity_id ">") entity_id))
-    (set _rc (newsession))
-    (try (lambda () (begin
-        (define resultrow (lambda (row) (_rc "tpl" (row "?tpl"))))
-        (eval (parse_sparql "rdf" (concat
-            "SELECT ?tpl WHERE { " sparql_id " a ?type . ?type <https://launix.de/rdfop/schema#" action_name "> ?tpl } LIMIT 1"
-        )))
-    )) (lambda (e) nil))
-    (if (not (nil? (_rc "tpl"))) (begin
-        (set _q (newsession))
-        (_q "id" entity_id)
-        (if (not (nil? extra_key)) (_q extra_key extra_val))
-        (set req (newsession))
-        (req "query" _q)
-        (set print (lambda (x) nil))
-        (define resultrow (lambda (o) nil))
-        (eval (_compile_tpl (concat "@PREFIX rdfop: <https://launix.de/rdfop/schema#> .\nPARAMETER ?id \"id\"\nPARAMETER ?" extra_key " \"" extra_key "\"\n" (_rc "tpl"))))
-    ))
 )))
 
 /* render_link(value, req, res) — CALL render_link(?val, REQ, RES)
@@ -373,16 +367,6 @@ END
     )
         (print "<div class='empty'>No component for " (htmlentities id) " mode=" (htmlentities mode) "</div>")
     )
-)))
-
-/* View method: HTMLView(html) — renders raw HTML content */
-(rdf_functions "view_HTMLView" (lambda (id req res) (begin
-    (set print (res "print"))
-    /* Strict: only prefixed schema property */
-    (set q (concat "SELECT ?h WHERE { " id " <https://launix.de/rdfop/schema#html> ?h }"))
-    (define formula (try (lambda () (parse_sparql "rdf" q)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>") nil)))
-    (define resultrow (lambda (o) (if (nil? (o "h")) (print "") (print (o "h")))))
-    (if (not (nil? formula)) (eval formula))
 )))
 
 /* custom function for TTL import */
@@ -728,7 +712,6 @@ END
                 ((res "header") "Content-Type" "text/plain")
                 (if (_dispatch_action action id (req "query") res) (begin
                     ((res "status") 200)
-                    ((res "print") "ok")
                 ) (begin
                     ((res "status") 404)
                     ((res "print") (concat "action not found: " action " for " id))
