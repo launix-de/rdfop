@@ -64,113 +64,68 @@ with the following syntax rules:
 
 ## Component System
 
-RDFOP uses a data-driven component system. Every UI element is described as RDF data — the same way your application data is stored. Components are defined as `rdfop:EditorComponent` instances in Turtle and can be swapped at runtime via AJAX.
+RDFOP uses a data-driven component system. Every UI element is described as RDF data — the same way your application data is stored. Components are defined as `rdfop:EditorComponent` instances in Turtle and are linked from an `rdfop:EntityType` via predicates such as `rdfop:view` and `rdfop:edit`.
 
 ### Defining a Component
 
-A component needs three things:
+A minimal component consists of:
 
-1. **An entity type** — what kind of data it displays
-2. **A component name** — `"view"`, `"edit"`, `"view-short"`, or any custom name
-3. **An RDFHP template** — server-rendered HTML with SPARQL queries
-
-Here is a minimal read-only component that displays a greeting:
+1. An entity type (`rdfop:EntityType`)
+2. One or more component bindings such as `rdfop:view` or `rdfop:edit`
+3. An RDFHP template on the `rdfop:EditorComponent`
 
 ```ttl
 @prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-# 1. Define the entity type
-rdfop:Greeting a rdfop:EntityType .
-rdfop:message a rdf:Property ; rdfs:domain rdfop:Greeting .
+rdfop:Greeting a rdfop:EntityType ; rdfs:label "Greeting" .
+rdfop:message a rdf:Property ; rdfs:domain rdfop:Greeting ; rdfs:range rdfs:Literal .
 
-# 2. Define the "view" component
 rdfop:Greeting_view a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:Greeting ;
-  rdfop:componentName "view" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
 SELECT ?msg WHERE { ?id rdfop:message ?msg }
 BEGIN
-?><div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
+?><div class='rdfop-c'
+       data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'
+       data-testid='<?rdf PRINT HTML ?id ?>'>
   <p><?rdf PRINT HTML ?msg ?></p>
 </div><?rdf
 END""" .
 
-# 3. Create an instance
+rdfop:Greeting rdfop:view rdfop:Greeting_view .
+
 myGreeting a rdfop:Greeting ;
   rdfop:message "Hello from RDFOP!" .
 ```
 
-The template is standard RDFHP: a SPARQL query fetches data, `BEGIN...END` loops over results, and `?>...<?rdf` switches between code and HTML output. The variable `?id` is automatically set to the subject being rendered.
+The template is standard RDFHP: a SPARQL query fetches data, `BEGIN...END` loops over results, and `?>...<?rdf` switches between code and HTML output. The variable `?id` is passed as a request parameter to the component template.
 
-### The Component Wrapper
+### Wrapper Contract
 
-Every component must render a wrapper `<div>` with `class='rdfop-c'` and `data-rdfop-id='...'`. This is how the framework identifies the component for swapping:
+Every swappable component should render a root element with `class='rdfop-c'` and `data-rdfop-params='...'`. The current runtime uses `data-rdfop-params` rather than the older `data-rdfop-id` / `data-rdfop-prop` pattern.
+
+Typical wrapper:
 
 ```html
-<div class='rdfop-c' data-rdfop-id='<?rdf PRINT HTML ?id ?>'>
+<div class='rdfop-c'
+     data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'
+     data-testid='<?rdf PRINT HTML ?id ?>'>
   <!-- your content here -->
 </div>
 ```
 
-### Adding Edit Support
+`data-testid` is optional for the UI itself, but useful for the embedded Playwright tests.
 
-To make a component editable, define a second `EditorComponent` with `componentName "edit"`. The edit template provides the editing UI and uses data attributes to track the old value for save-back:
+### View / Edit Switching
 
-```ttl
-rdfop:Greeting_edit a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:Greeting ;
-  rdfop:componentName "edit" ;
-  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
-SELECT ?msg WHERE { ?id rdfop:message ?msg }
-BEGIN
-?><div class='rdfop-c rdfop-c--editing'
-     data-rdfop-id='<?rdf PRINT HTML ?id ?>'
-     data-rdfop-prop='https://launix.de/rdfop/schema#message'
-     data-rdfop-old='<?rdf PRINT JSON ?msg ?>'>
-  <div class='rdfop-edit-toolbar'>
-    <button onclick='rdfopCommit(this)'>&#x2714;</button>
-    <button onclick='rdfopCancel(this)'>&#x2718;</button>
-  </div>
-  <textarea class='rdfop-editor'><?rdf PRINT HTML ?msg ?></textarea>
-</div><?rdf
-END""" .
-```
+Components are usually switched with:
 
-Key attributes on the wrapper div:
-- `data-rdfop-id` — the RDF subject being edited
-- `data-rdfop-prop` — the full IRI of the property being edited
-- `data-rdfop-old` — the original value, JSON-encoded via `PRINT JSON` (needed for DELETE on save)
+- `rdfopSwap(el, "view")`
+- `rdfopSwap(el, "edit")`
 
-### Switching Between View and Edit
-
-The view template includes an edit button that triggers `rdfopEdit(this)`:
-
-```html
-<button class='rdfop-edit-btn' onclick='rdfopEdit(this)'>&#x270E;</button>
-```
-
-This calls `rdfopSwap(element, "edit")` which fetches the edit template from the server and replaces the DOM element. The edit template has save/cancel buttons:
-
-```html
-<button onclick='rdfopCommit(this)'>&#x2714;</button>  <!-- save -->
-<button onclick='rdfopCancel(this)'>&#x2718;</button>  <!-- cancel -->
-```
-
-- **rdfopCommit** reads the textarea value, builds DELETE + INSERT TTL from the old/new values, POSTs to `/rdfop-save`, then swaps back to view.
-- **rdfopCancel** simply swaps back to view (re-fetches fresh data from the server).
-
-### Custom Component Names
-
-You can define any number of named components per type. Convention: `"view"` is the default, `"edit"` is the editor. But you can add more:
-
-```ttl
-rdfop:Person_viewShort a rdfop:EditorComponent ;
-  rdfop:forTypes rdfop:Person ;
-  rdfop:componentName "view-short" ;
-  rdfop:componentTemplate "..." .
-```
-
-Useful for table cells, list items, UML diagram nodes, etc. Call `rdfopSwap(element, "view-short")` to render it.
+The runtime fetches `/rdfop-render?...` and replaces the current `.rdfop-c` node with freshly rendered HTML. Saving is typically done through `rdfopCommit(...)`, which POSTs DELETE/INSERT Turtle to `/rdfop-save`.
 
 ### RDFHP Print Formats
 
@@ -190,9 +145,9 @@ The framework provides these global functions:
 | Function | Description |
 |----------|-------------|
 | `rdfopSwap(el, mode)` | Replace a `.rdfop-c` element with a different component mode |
-| `rdfopEdit(btn)` | Shorthand: find nearest `.rdfop-c` and swap to `"edit"` |
-| `rdfopCancel(btn)` | Shorthand: find nearest `.rdfop-c` and swap to `"view"` |
 | `rdfopCommit(btn)` | Save changes (DELETE old + INSERT new triple), then swap to `"view"` |
+| `rdfopSave(deleteTtl, insertTtl)` | Low-level triple mutation helper used by many components |
+| `rdfopRefreshCanvas()` | Re-render the main canvas while preserving active tabs |
 
 ### Server Endpoints
 
@@ -200,6 +155,21 @@ The framework provides these global functions:
 |----------|--------|-------------|
 | `/rdfop-render?id=...&mode=...` | GET | Render a component and return HTML |
 | `/rdfop-save` | POST | Delete and/or insert triples (`delete=TTL&insert=TTL`) |
+| `/rdfop-create` | POST | Create a new child entity under a parent |
+| `/rdfop-delete` | POST | Delete a subtree by id |
+| `/rdfop-source-cleanup` | POST | Server-side cleanup for cross-window drag/drop moves |
+| `/rdfop-playwright-tests` | GET | Expose embedded Playwright tests stored in RDF |
+
+### Built-In Layout Components
+
+The current UI is centered around a few self-describing layout primitives:
+
+- `rdfop:ComponentSelector` — palette / placeholder that either shows a palette or a selected child
+- `rdfop:Split` / `rdfop:SplitH` / `rdfop:SplitV` — split panes with draggable separator
+- `rdfop:TabGroup` / `rdfop:Tab` — tabbed layout with reorderable tabs
+- `rdfop:HTMLView`, `rdfop:Website`, `rdfop:Browser`, `rdfop:Explorer`, `rdfop:Settings`, `rdfop:SPARQLConsole`, `rdfop:TTLImport`
+
+Drag and drop is URI-based. Internal drags use `/view/<id>` URLs; external `http/https` links can be dropped into palettes or tab bars and are materialized as `rdfop:Website` nodes.
 
 ## What You Can Build
 
@@ -215,11 +185,11 @@ RDFOP is designed for highly interactive, data-driven apps. With its RDF-first d
 
 ## Build Instructions
 
-At first, you have to make and install rdfhp and memcp:
+Build the bundled `memcp` dependency:
 ```
 git clone https://github.com/launix-de/rdfop
 cd rdfop
-make # this clones https://github.com/launix-de/memcp and compiles it
+make
 ```
 
 Then run the server:
@@ -229,7 +199,18 @@ Then run the server:
 
 Then open: http://localhost:3443
 
-`schema.ttl` and `example.ttl` are automatically imported at startup. You can also import additional TTL files via the web UI (Settings menu → TTL import).
+On startup, RDFOP loads `components.ttl`, which in turn includes the component files under `components/`. `example.ttl` is loaded only for a fresh empty database. You can import additional TTL files via the web UI (`Settings` → `TTL Import`).
+
+## Testing
+
+Playwright is configured to start the app via `./run.sh`:
+
+```bash
+npm install
+npm run test:playwright
+```
+
+The test cases are embedded in the RDF schema itself via `rdfop:PlaywrightTest` and exposed through `/rdfop-playwright-tests`. This makes it possible to keep component-specific regression tests next to the component definitions.
 
 ## Vim syntax for Turtle (.ttl)
 
