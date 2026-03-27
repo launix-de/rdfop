@@ -15,14 +15,13 @@ rdfop:ComponentSelector a rdfop:EntityType .
 rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:range rdf:Resource .
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
 rdfop:ComponentSelector rdfop:onChildRemoved """
-PARAMETER ?child "child"
-SELECT ?gone WHERE { ?id rdfop:children ?child }
+PARAMETER ?removedChild "child"
+SELECT ?gone WHERE { ?id rdfop:children ?removedChild }
 BEGIN
-  DELETE { ?id rdfop:children ?child }
-  DELETE { ?id rdfop:selectedNode ?child }
-  SELECT ?p, ?o WHERE { ?child ?p ?o } BEGIN DELETE { ?child ?p ?o } END
+  DELETE { ?id rdfop:children ?removedChild }
+  DELETE { ?id rdfop:selectedNode ?removedChild }
 END
-SELECT ?still WHERE { ?id rdfop:children ?still }
+SELECT ?still WHERE { ?id rdfop:selectedNode ?still }
 BEGIN
 ELSE
   SELECT ?parent WHERE { ?parent rdfop:children ?id }
@@ -98,6 +97,17 @@ window.rdfopSelectorAssign = async function(selectorId, nextId, prevId) {
   }
   await rdfopSave(del || null, ins || null);
 };
+window.rdfopSelectorFindParent = async function(selectorId) {
+  var rows = await _rdfopQuery('SELECT ?parent WHERE { ?parent <https://launix.de/rdfop/schema#children> ' + rdfopSid(selectorId) + ' }');
+  return rows.length && rows[0]['?parent'] ? rows[0]['?parent'] : null;
+};
+window.rdfopSelectorRemoveContent = async function(selectorId, contentId) {
+  await rdfopSelectorAssign(selectorId, null, contentId);
+  var parentId = await rdfopSelectorFindParent(selectorId);
+  if (parentId) {
+    await fetch('/onChildRemoved/' + encodeURIComponent(parentId) + '?child=' + encodeURIComponent(selectorId));
+  }
+};
 window.rdfopSelectorDispatchChildRemoved = function(el) {
   if (!el) {
     rdfopRefreshCanvas();
@@ -108,12 +118,17 @@ window.rdfopSelectorDispatchChildRemoved = function(el) {
 window.rdfopSelectorHandleSameWindowDrop = async function(el, contentId, result) {
   var replacementId = result && result.replacementUri ? rdfopDragReadViewIdFromUri(result.replacementUri) : null;
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
+  if (result && result.leaveSourcePalette) {
+    await rdfopSelectorAssign(p.id, null, contentId);
+    await rdfopSwap(el, 'view');
+    return;
+  }
   if (replacementId && replacementId !== contentId) {
     await rdfopSelectorAssign(p.id, replacementId, contentId);
     await rdfopSwap(el, 'view');
     return;
   }
-  await fetch('/onChildRemoved/' + encodeURIComponent(p.id) + '?child=' + encodeURIComponent(contentId));
+  await rdfopSelectorRemoveContent(p.id, contentId);
   rdfopSelectorDispatchChildRemoved(el);
 };
 window.rdfopSelectorClearSelection = async function(btn) {
@@ -123,7 +138,12 @@ window.rdfopSelectorClearSelection = async function(btn) {
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   var selId = el.dataset.selected;
   if (!selId) return;
-  await fetch('/onChildRemoved/' + encodeURIComponent(p.id) + '?child=' + encodeURIComponent(selId));
+  await fetch('/rdfop-delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'id=' + encodeURIComponent(selId)
+  });
+  await rdfopSelectorRemoveContent(p.id, selId);
   rdfopSelectorDispatchChildRemoved(el);
 };
 var _S = 'https://launix.de/rdfop/schema#';
@@ -164,7 +184,7 @@ window.rdfopSelectorDragStart = function(e, btn) {
   return true;
 };
 window.rdfopSelectorDragEnd = function() {
-  rdfopDragClear();
+  if (!window.__rdfopDragSession || !window.__rdfopDragSession.dropped) rdfopDragClear();
   document.querySelectorAll('[class*=rdfop-selector--drop-],[class*=rdfop-palette--drop-]').forEach(rdfopSelectorClearDropClasses);
 };
 window.rdfopSelectorDragOver = function(e, el) {
@@ -189,9 +209,10 @@ window.rdfopSelectorPaletteDrop = async function(e, el) {
   rdfopSelectorClearDropClasses(el);
   var data = _rdfopSelectorDropData(e);
   if (!data.id || data.kind !== 'component') return;
+  rdfopDragMarkDropped(data.uri);
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   await rdfopSelectorAssign(p.id, data.id, null);
-  await rdfopDragFinish(data.uri, {});
+  await rdfopDragFinish(data.uri, {leaveSourcePalette: true});
   await rdfopSwap(el, 'view');
 };
 window.rdfopSelectorCreateSplit = async function(selectorId, targetId, droppedId, zone) {
@@ -234,6 +255,7 @@ window.rdfopSelectorFilledDrop = async function(e, el) {
   var tgtSel = el.dataset.selected;
   var zone = _rdfopSelectorDropZone(e, el);
   if (!tgtSel || data.id === tgtSel) return;
+  rdfopDragMarkDropped(data.uri);
   if (zone === 'center') {
     if (!rdfopDragHasLocalSource(data.uri)) return;
     await rdfopSelectorAssign(p.id, data.id, tgtSel);
@@ -268,21 +290,87 @@ SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel }
 BEGIN
 ?><?rdf SELECT ?label WHERE { ?sel a ?type . ?type rdfs:label ?label }
 BEGIN
-?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='<?rdf PRINT HTML ?label ?>' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
+?><div class='rdfop-c rdfop-selector--filled' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='<?rdf PRINT HTML ?label ?>' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
 <?rdf
 ELSE
-?><div class='rdfop-c rdfop-selector--filled' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
+?><div class='rdfop-c rdfop-selector--filled' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
 <?rdf END ?>
   <a class='rdfop-selector__move' href='/view/<?rdf PRINT URL ?sel ?>' draggable='true' ondragstart='rdfopSelectorDragStart(event,this)' ondragend='rdfopSelectorDragEnd(event)' onclick='event.preventDefault()'>&#x2630;</a>
-  <button class='rdfop-selector__clear' onclick='event.stopPropagation();rdfopSelectorClearSelection(this)'>&#x2715;</button>
+  <button class='rdfop-selector__clear' onclick='event.preventDefault();event.stopPropagation();rdfopSelectorClearSelection(this)'>&#x2715;</button>
   <?rdf CALL render_object(?sel, REQ, RES) ?>
 </div><?rdf
 ELSE
-?><div class='rdfop-c rdfop-palette' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorPaletteDrop(event,this)'>
-  <button class='rdfop-palette__remove' onclick='rdfopSelectorPaletteRemove(this)'>&#x2715;</button>
+?><div class='rdfop-c rdfop-palette' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorPaletteDrop(event,this)'>
+  <button class='rdfop-palette__remove' onclick='event.preventDefault();event.stopPropagation();rdfopSelectorPaletteRemove(this)'>&#x2715;</button>
   <?rdf SELECT ?type, ?label WHERE { ?type rdfop:paletteVisible "true" . ?type a rdfop:EntityType . ?type rdfs:label ?label }
   BEGIN
   ?><div class='rdfop-palette__item' onclick='rdfopSelectorPaletteSelect(this,<?rdf PRINT JSON ?id ?>,&quot;<?rdf PRINT HTML ?type ?>&quot;)'><?rdf PRINT HTML ?label ?></div><?rdf
   END ?>
 </div><?rdf
 END""" .
+
+################################################################
+# Tests
+################################################################
+
+rdfop:test_component_selector_center_swap a rdfop:PlaywrightTest ;
+  rdfs:label "ComponentSelector center drop swaps source and target" ;
+  rdfop:testFor rdfop:ComponentSelector ;
+  rdfop:order "10" ;
+  rdfop:playwright """
+const root = helpers.id();
+const split = helpers.id();
+const leftSel = helpers.id();
+const rightSel = helpers.id();
+const leftLeaf = helpers.id();
+const rightLeaf = helpers.id();
+await helpers.insert([
+  helpers.selector(root, split),
+  helpers.split(split, 'horizontal', '0.5', leftSel, rightSel),
+  helpers.selector(leftSel, leftLeaf),
+  helpers.selector(rightSel, rightLeaf),
+  helpers.htmlView(leftLeaf, 'A'),
+  helpers.htmlView(rightLeaf, 'B'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragComponent(leftSel, rightSel, 'center');
+  await expect(helpers.byId(leftSel)).toHaveAttribute('data-selected', rightLeaf);
+  await expect(helpers.byId(rightSel)).toHaveAttribute('data-selected', leftLeaf);
+  await expect(helpers.byId(leftLeaf)).toBeVisible();
+  await expect(helpers.byId(rightLeaf)).toBeVisible();
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_component_selector_edge_rehomes_split a rdfop:PlaywrightTest ;
+  rdfs:label "Edge drag into neighbor dissolves outer split and keeps one vertical split" ;
+  rdfop:testFor rdfop:ComponentSelector ;
+  rdfop:order "15" ;
+  rdfop:playwright """
+const root = helpers.id();
+const split = helpers.id();
+const leftSel = helpers.id();
+const rightSel = helpers.id();
+const leftLeaf = helpers.id();
+const rightLeaf = helpers.id();
+await helpers.insert([
+  helpers.selector(root, split),
+  helpers.split(split, 'horizontal', '0.5', leftSel, rightSel),
+  helpers.selector(leftSel, leftLeaf),
+  helpers.selector(rightSel, rightLeaf),
+  helpers.htmlView(leftLeaf, 'A'),
+  helpers.htmlView(rightLeaf, 'B'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragComponent(rightSel, leftSel, 'bottom');
+  await expect(page.locator('.rdfop-split--vertical')).toHaveCount(1);
+  await expect(helpers.byId(split)).toHaveCount(0);
+  await expect(helpers.byId(leftSel)).toHaveCount(0);
+  await expect(helpers.byId(rightSel)).toHaveCount(0);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .

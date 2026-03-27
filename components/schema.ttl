@@ -13,6 +13,7 @@ rdfop:EntityType a rdfs:Class .
 rdfop:Attribute a rdfs:Class .
 rdfop:EditorComponent a rdfs:Class .
 rdfop:Method a rdfs:Class .
+rdfop:PlaywrightTest a rdfs:Class .
 
 # Methods (public actions callable via /{method}/{id})
 rdfop:view a rdfop:Method .
@@ -50,6 +51,8 @@ rdfop:initTemplate a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:ran
 rdfop:css a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal . # CSS styles for this component
 rdfop:js a rdf:Property ; rdfs:domain rdfop:EditorComponent ; rdfs:range rdfs:Literal .
 rdfop:onChildRemoved a rdf:Property ; rdfs:domain rdfop:EntityType ; rdfs:range rdfs:Literal . # RDFHP snippet: ?id=parent, ?child=removed child # JS code for this component
+rdfop:playwright a rdf:Property ; rdfs:domain rdfop:PlaywrightTest ; rdfs:range rdfs:Literal .
+rdfop:testFor a rdf:Property ; rdfs:domain rdfop:PlaywrightTest ; rdfs:range rdf:Resource .
 
 # Code Generators
 rdfop:handlesNodeType a rdf:Property ; rdfs:domain rdfop:CodeGenerator ; rdfs:range rdfop:EntityType .

@@ -36,11 +36,7 @@ PARAMETER ?id "id"
   /* rdfop component framework (base) */
   .rdfop-c { position: relative; }
   /* component CSS loaded from rdfop:css attributes */
-  <?rdf
-  SELECT ?css WHERE { ?comp a rdfop:EditorComponent . ?comp rdfop:css ?css }
-  BEGIN
-  ?><?rdf PRINT RAW ?css ?>
-  <?rdf END ?>
+  <?rdf CALL emit_component_css(REQ, RES) ?>
 </style>
 </head><body>
   <div class="canvas">
@@ -337,11 +333,23 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         e.dataTransfer.setData('application/x-rdfop-kind', (meta && meta.kind) || 'component');
         window.__rdfopDragSession = {
           uri: uri,
+          dropped: false,
           handleSameWindowDrop: meta && meta.handleSameWindowDrop ? meta.handleSameWindowDrop : null
         };
         rdfopCoverIframes();
         document.dispatchEvent(new CustomEvent('rdfop:externalDragStart', {detail: {uri: uri}}));
         return uri;
+      };
+
+      window.rdfopDragMarkDropped = function(uri) {
+        var session = window.__rdfopDragSession;
+        if (!session) return false;
+        if (uri) {
+          var normalized = window.rdfopDragNormalizeUri(uri);
+          if (!normalized || session.uri !== normalized) return false;
+        }
+        session.dropped = true;
+        return true;
       };
 
       window.rdfopDragFinish = async function(uri, result) {
@@ -549,10 +557,6 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
   </script>
   <script>
   /* component JS loaded from rdfop:js attributes */
-  <?rdf
-  SELECT ?js WHERE { ?comp a rdfop:EditorComponent . ?comp rdfop:js ?js }
-  BEGIN
-  ?><?rdf PRINT RAW ?js ?>
-  <?rdf END ?>
+  <?rdf CALL emit_component_js(REQ, RES) ?>
   </script>
 </body></html>

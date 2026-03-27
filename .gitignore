@@ -6,3 +6,7 @@ concept-self-editor.md
 .memcp-history.tmp
 test_order.scm
 todo
+node_modules
+playwright-report
+test-results
+tests/.generated

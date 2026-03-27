@@ -1,0 +1,11 @@
+{
+  "name": "rdfop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:playwright": "npx playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

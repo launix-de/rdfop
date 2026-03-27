@@ -10,11 +10,10 @@
 rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
 rdfop:Tab rdfop:onChildRemoved """
-PARAMETER ?child "child"
-SELECT ?gone WHERE { ?id rdfop:children ?child }
+PARAMETER ?removedChild "child"
+SELECT ?gone WHERE { ?id rdfop:children ?removedChild }
 BEGIN
-  DELETE { ?id rdfop:children ?child }
-  SELECT ?p, ?o WHERE { ?child ?p ?o } BEGIN DELETE { ?child ?p ?o } END
+  DELETE { ?id rdfop:children ?removedChild }
 END
 SELECT ?tabgroup WHERE { ?tabgroup rdfop:children ?id }
 BEGIN
@@ -30,7 +29,7 @@ _:child a <https://launix.de/rdfop/schema#ComponentSelector> .
 
 # TabGroup components
 rdfop:TabGroup rdfop:onChildRemoved """
-PARAMETER ?child "child"
+PARAMETER ?removedChild "child"
 SELECT ?tab WHERE { ?id rdfop:children ?tab }
 BEGIN
 ELSE
@@ -112,10 +111,15 @@ window.rdfopTabsHandleSameWindowDrop = async function(tab, result) {
   var childId = tab.dataset.childId;
   var contentId = tab.dataset.contentId || childId;
   if (!tabId || !childId || !contentId) return;
+  if (result && result.leaveSourcePalette && contentId !== childId) {
+    await rdfopSelectorAssign(childId, null, contentId);
+    await rdfopTabsRefreshAfterSourceCleanup(tab);
+    return;
+  }
   if (contentId === childId) {
     await fetch('/onChildRemoved/' + encodeURIComponent(tabId) + '?child=' + encodeURIComponent(childId));
   } else {
-    await fetch('/onChildRemoved/' + encodeURIComponent(childId) + '?child=' + encodeURIComponent(contentId));
+    await rdfopSelectorRemoveContent(childId, contentId);
   }
   await rdfopTabsRefreshAfterSourceCleanup(tab);
 };
@@ -128,14 +132,40 @@ window.rdfopTabsPersistOrder = async function(tabs, orderedIds) {
     var sid = rdfopSid(id);
     var tabEl = allTabs.find(function(t) { return t.dataset.tabId === id; });
     var oldOrd = tabEl ? tabEl.dataset.tabOrder : null;
+    if (!oldOrd) {
+      var rows = await _rdfopQuery('SELECT ?o WHERE { <' + id + '> <https://launix.de/rdfop/schema#order> ?o }');
+      oldOrd = rows.length && rows[0]['?o'] ? rows[0]['?o'] : null;
+    }
     var newOrd = String(base + i);
-    if (oldOrd && oldOrd !== newOrd) {
+    if (oldOrd !== newOrd) {
       await rdfopSave(
-        sid + ' <https://launix.de/rdfop/schema#order> ' + JSON.stringify(oldOrd) + ' .',
+        oldOrd ? (sid + ' <https://launix.de/rdfop/schema#order> ' + JSON.stringify(oldOrd) + ' .') : null,
         sid + ' <https://launix.de/rdfop/schema#order> ' + JSON.stringify(newOrd) + ' .'
       );
     }
   }
+};
+window.rdfopTabsAdd = async function(btn) {
+  var tabs = btn.closest('.rdfop-c');
+  if (!tabs) return;
+  var tabGroupP = JSON.parse(tabs.dataset.rdfopParams || '{}');
+  var resp = await fetch('/rdfop-create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'parent=' + encodeURIComponent(tabGroupP.id) + '&type=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23Tab'
+  });
+  if (!resp.ok) return;
+  var newTabId = (await resp.text()).trim();
+  var orderedIds = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab')).map(function(tab) {
+    return tab.dataset.tabId;
+  });
+  orderedIds.push(newTabId);
+  await rdfopTabsPersistOrder(tabs, orderedIds);
+  await rdfopSwap(tabs, 'view');
+  setTimeout(function() {
+    var tab = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + newTabId + '"]');
+    if (tab) rdfopTabsSwitch(tab);
+  }, 0);
 };
 window.rdfopTabsDirection = function(bar) {
   var tabs = bar.closest('.rdfop-c');
@@ -197,6 +227,13 @@ window.rdfopTabClose = async function(tabEl) {
   var nextIdx = idx < allTabs.length - 1 ? idx + 1 : idx - 1;
   var nextTabId = nextIdx >= 0 ? allTabs[nextIdx].dataset.tabId : null;
   var url = '/onChildRemoved/' + encodeURIComponent(tabId);
+  if (childId) {
+    await fetch('/rdfop-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'id=' + encodeURIComponent(childId)
+    });
+  }
   if (childId) url += '?child=' + encodeURIComponent(childId);
   await fetch(url);
   if (allTabs.length <= 1) {
@@ -300,10 +337,7 @@ window.rdfopTabsBarDragOver = function(e, bar) {
   bar.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
     t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
   });
-  var pos = rdfopTabsBarDropPosition(e, bar);
-  if (pos.before) pos.before.classList.add('rdfop-tabs__tab--dragover-before');
-  else if (pos.after) pos.after.classList.add('rdfop-tabs__tab--dragover-after');
-  else bar.classList.add('rdfop-tabs__bar--drop-target');
+  bar.classList.add('rdfop-tabs__bar--drop-target');
 };
 window.rdfopTabsBarDrop = async function(e, bar) {
   e.preventDefault();
@@ -314,6 +348,7 @@ window.rdfopTabsBarDrop = async function(e, bar) {
   });
   var tabs = bar.closest('.rdfop-c');
   if (rdfopTabsCanReorderInto(e, tabs)) {
+    rdfopDragMarkDropped();
     var dragTabId = rdfopTabsReadDraggedTabId(e);
     if (!dragTabId) return;
     var allExistingTabs = Array.from(tabs.querySelectorAll('.rdfop-tabs__tab'));
@@ -331,10 +366,8 @@ window.rdfopTabsBarDrop = async function(e, bar) {
   var uri = rdfopDragReadUri(e);
   var contentId = uri ? rdfopDragReadViewIdFromUri(uri) : null;
   if (!contentId) return;
+  rdfopDragMarkDropped(uri);
   var tabGroupP = JSON.parse(tabs.dataset.rdfopParams || '{}');
-  var pos = rdfopTabsBarDropPosition(e, bar);
-  var refTab = pos.before || pos.after;
-  var refOrder = refTab ? refTab.dataset.tabOrder : null;
   var resp = await fetch('/rdfop-create', {
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -342,26 +375,6 @@ window.rdfopTabsBarDrop = async function(e, bar) {
   });
   if (!resp.ok) return;
   var newTabId = (await resp.text()).trim();
-  if (refOrder) {
-    var allTabs = Array.from(bar.querySelectorAll('.rdfop-tabs__tab'));
-    var orders = allTabs.map(function(t){ return t.dataset.tabOrder; }).sort();
-    var refIdx = orders.indexOf(refOrder);
-    var newOrd;
-    if (pos.before) {
-      var prev = refIdx > 0 ? orders[refIdx - 1] : '0';
-      newOrd = String(Math.floor((parseInt(prev, 10) + parseInt(refOrder, 10)) / 2));
-      if (newOrd === prev || newOrd === refOrder) newOrd = prev + '5';
-    } else {
-      newOrd = String(parseInt(refOrder, 10) + 1);
-    }
-    var oldOrd = await _rdfopQuery('SELECT ?o WHERE { <' + newTabId + '> <https://launix.de/rdfop/schema#order> ?o }');
-    if (oldOrd.length && oldOrd[0]['?o']) {
-      await rdfopSave(
-        '<' + newTabId + '> <https://launix.de/rdfop/schema#order> ' + JSON.stringify(oldOrd[0]['?o']) + ' .',
-        '<' + newTabId + '> <https://launix.de/rdfop/schema#order> ' + JSON.stringify(newOrd) + ' .'
-      );
-    }
-  }
   var embedded = await rdfopTabsBindNewTabContent(newTabId, contentId);
   if (!embedded) return;
   var sourceLabel = e.dataTransfer ? (e.dataTransfer.getData('application/x-rdfop-tab-label') || '').trim() : '';
@@ -369,6 +382,11 @@ window.rdfopTabsBarDrop = async function(e, bar) {
   if (nextLabel) {
     await rdfopTabsSetLabel(newTabId, nextLabel);
   }
+  var orderedIds = Array.from(bar.querySelectorAll('.rdfop-tabs__tab')).map(function(tab) {
+    return tab.dataset.tabId;
+  });
+  orderedIds.push(newTabId);
+  await rdfopTabsPersistOrder(tabs, orderedIds);
   await rdfopDragFinish(uri, {});
   await rdfopSwap(tabs, 'view');
   setTimeout(function() {
@@ -419,6 +437,7 @@ window.rdfopTabsReorderDrop = async function(e) {
   if (!rdfopTabsCanReorderInto(e, tabs)) return;
   e.preventDefault();
   e.stopPropagation();
+  rdfopDragMarkDropped();
   tabs.querySelectorAll('.rdfop-tabs__tab--dragover-before,.rdfop-tabs__tab--dragover-after').forEach(function(t){
     t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
   });
@@ -449,7 +468,7 @@ window.rdfopTabsReorderEnd = function(e) {
       t.classList.remove('rdfop-tabs__tab--dragover-before','rdfop-tabs__tab--dragover-after');
     });
   }
-  rdfopDragClear();
+  if (!window.__rdfopDragSession || !window.__rdfopDragSession.dropped) rdfopDragClear();
 };""" ;
   rdfop:css """.rdfop-tabs { display: flex; width: 100%; height: 100%; }
 .rdfop-tabs--top, .rdfop-tabs--bottom { flex-direction: column; }
@@ -485,40 +504,279 @@ window.rdfopTabsReorderEnd = function(e) {
 .rdfop-tabs__panel { display: none; width: 100%; height: 100%; }
 .rdfop-tabs__panel--active { display: flex; flex-direction: column; }
 .rdfop-tabs__panel--active > * { flex: 1; min-height: 0; }""" ;
+  # rdfop feature gap: ORDER BY ?ord is only reliable here if the ordered
+  # triple is the leading pattern. Start both queries with
+  # ?tab rdfop:order ?ord until the planner can reorder joins itself.
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 SELECT ?dir WHERE { ?id rdfop:tabDirection ?dir }
 BEGIN
-?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-dir='<?rdf PRINT HTML ?dir ?>'>
+?><div class='rdfop-c rdfop-tabs rdfop-tabs--<?rdf PRINT HTML ?dir ?>' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-dir='<?rdf PRINT HTML ?dir ?>'>
   <div class='rdfop-tabs__bar' ondragover='rdfopTabsBarDragOver(event,this)' ondrop='rdfopTabsBarDrop(event,this)'>
     <button class='rdfop-tabs__dir' onclick='rdfopTabsDirection(this.closest(&quot;.rdfop-tabs__bar&quot;))'>&#x2B82;</button>
     <?rdf
-    SELECT ?tab, ?label, ?ord, ?child WHERE { ?id rdfop:children ?tab . ?tab rdfop:order ?ord . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label . ?tab rdfop:children ?child } ORDER BY ?ord
+    SELECT ?tab, ?label, ?ord, ?child WHERE { ?tab rdfop:order ?ord . ?id rdfop:children ?tab . ?tab a rdfop:Tab . ?tab rdfop:tabLabel ?label . ?tab rdfop:children ?child } ORDER BY ?ord
     BEGIN
     ?><?rdf SELECT ?selected WHERE { ?child rdfop:selectedNode ?selected }
     BEGIN
-    ?><a class='rdfop-tabs__tab' href='/view/<?rdf PRINT URL ?selected ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?selected ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
+    ?><a class='rdfop-tabs__tab' data-testid='tab:<?rdf PRINT HTML ?tab ?>' href='/view/<?rdf PRINT URL ?selected ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?selected ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
       <span class='rdfop-tabs__close' onclick='event.preventDefault();event.stopPropagation();rdfopTabClose(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</span>
     </a><?rdf
     ELSE
-    ?><a class='rdfop-tabs__tab' href='/view/<?rdf PRINT URL ?child ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?child ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
+    ?><a class='rdfop-tabs__tab' data-testid='tab:<?rdf PRINT HTML ?tab ?>' href='/view/<?rdf PRINT URL ?child ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?child ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
       <span class='rdfop-tabs__close' onclick='event.preventDefault();event.stopPropagation();rdfopTabClose(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</span>
     </a><?rdf
     END ?><?rdf
     END
     ?>
-    <button class='rdfop-tabs__add' onclick='rdfopCreate(this,&quot;<?rdf PRINT HTML ?id ?>&quot;,&quot;https://launix.de/rdfop/schema#Tab&quot;)'>+</button>
+    <button class='rdfop-tabs__add' onclick='rdfopTabsAdd(this)'>+</button>
   </div>
   <div class='rdfop-tabs__content'>
     <?rdf
-    SELECT ?tab, ?child, ?ord WHERE { ?id rdfop:children ?tab . ?tab rdfop:order ?ord . ?tab a rdfop:Tab . ?tab rdfop:children ?child } ORDER BY ?ord
+    SELECT ?tab, ?child, ?ord WHERE { ?tab rdfop:order ?ord . ?id rdfop:children ?tab . ?tab a rdfop:Tab . ?tab rdfop:children ?child } ORDER BY ?ord
     BEGIN
-    ?><div class='rdfop-tabs__panel' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-child-id='<?rdf PRINT HTML ?child ?>'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
+    ?><div class='rdfop-tabs__panel' data-testid='panel:<?rdf PRINT HTML ?tab ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-child-id='<?rdf PRINT HTML ?child ?>'><?rdf CALL render_object(?child, REQ, RES) ?></div><?rdf
     END
     ?>
   </div>
 </div>
 <?rdf
 END""" .
+
+################################################################
+# Tests
+################################################################
+
+rdfop:test_tab_add_appends_last a rdfop:PlaywrightTest ;
+  rdfs:label "Tab add appends new tab at the end" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "20" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const selA = helpers.id();
+const selB = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabA, 'Alpha', '1', selA),
+  helpers.tab(group, tabB, 'Beta', '2', selB),
+  helpers.selector(selA, leafA),
+  helpers.selector(selB, leafB),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta']);
+  await helpers.byId(group).locator('.rdfop-tabs__add').click();
+  await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta', 'New Tab']);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_tab_to_edge_moves_and_dissolves_source_tab a rdfop:PlaywrightTest ;
+  rdfs:label "Dragging tab content to edge of another tab removes the source tab" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "30" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const selA = helpers.id();
+const selB = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabA, 'Alpha', '1', selA),
+  helpers.tab(group, tabB, 'Beta', '2', selB),
+  helpers.selector(selA, leafA),
+  helpers.selector(selB, leafB),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragComponentViaTab(selA, tabB, selB, 'bottom');
+  await expect(helpers.tabLabels(group)).toHaveText(['Beta']);
+  await expect(helpers.byId(selA)).toHaveCount(0);
+  await expect(page.locator('.rdfop-split')).toHaveCount(1);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_tab_to_tab_center_swap a rdfop:PlaywrightTest ;
+  rdfs:label "Dragging tab content to another tab center swaps both contents" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "40" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const selA = helpers.id();
+const selB = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabA, 'Alpha', '1', selA),
+  helpers.tab(group, tabB, 'Beta', '2', selB),
+  helpers.selector(selA, leafA),
+  helpers.selector(selB, leafB),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragComponentViaTab(selA, tabB, selB, 'center');
+  await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta']);
+  await expect(helpers.byId(selA)).toHaveAttribute('data-selected', leafB);
+  await expect(helpers.byId(selB)).toHaveAttribute('data-selected', leafA);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_tab_reorder_persists a rdfop:PlaywrightTest ;
+  rdfs:label "Tab reorder moves the dragged tab before the target and survives reload" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "50" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const tabC = helpers.id();
+const selA = helpers.id();
+const selB = helpers.id();
+const selC = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+const leafC = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabA, 'Alpha', '1', selA),
+  helpers.tab(group, tabB, 'Beta', '2', selB),
+  helpers.tab(group, tabC, 'Gamma', '3', selC),
+  helpers.selector(selA, leafA),
+  helpers.selector(selB, leafB),
+  helpers.selector(selC, leafC),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+  helpers.htmlView(leafC, 'Gamma'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.reorderTab(tabC, tabA, 'before');
+  await expect(helpers.tabLabels(group)).toHaveText(['Gamma', 'Alpha', 'Beta']);
+  await page.reload();
+  await expect(helpers.tabLabels(group)).toHaveText(['Gamma', 'Alpha', 'Beta']);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_split_child_to_new_tab a rdfop:PlaywrightTest ;
+  rdfs:label "Dragging one split child to the tab bar creates a new trailing tab" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "60" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabMain = helpers.id();
+const tabSel = helpers.id();
+const split = helpers.id();
+const leftSel = helpers.id();
+const rightSel = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabMain, 'Main', '1', tabSel),
+  helpers.selector(tabSel, split),
+  helpers.split(split, 'horizontal', '0.5', leftSel, rightSel),
+  helpers.selector(leftSel, leafA),
+  helpers.selector(rightSel, leafB),
+  helpers.htmlView(leafA, 'Alpha'),
+  helpers.htmlView(leafB, 'Beta'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragComponentToTabBar(rightSel, group);
+  await expect(helpers.tabLabels(group)).toHaveCount(2);
+  await helpers.clickTab(tabMain);
+  await expect(helpers.byId(tabSel)).toHaveAttribute('data-selected', leafA);
+  await expect(helpers.byId(split)).toHaveCount(0);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .
+
+rdfop:test_split_child_to_other_tab_split_child a rdfop:PlaywrightTest ;
+  rdfs:label "Dragging a split child into another tab split child hovers the tab and keeps both tabs consistent" ;
+  rdfop:testFor rdfop:TabGroup ;
+  rdfop:order "70" ;
+  rdfop:playwright """
+const root = helpers.id();
+const group = helpers.id();
+const tabA = helpers.id();
+const tabB = helpers.id();
+const tabSelA = helpers.id();
+const tabSelB = helpers.id();
+const splitA = helpers.id();
+const splitB = helpers.id();
+const leftSelA = helpers.id();
+const rightSelA = helpers.id();
+const leftSelB = helpers.id();
+const rightSelB = helpers.id();
+const leafA = helpers.id();
+const leafB = helpers.id();
+const leafC = helpers.id();
+const leafD = helpers.id();
+await helpers.insert([
+  helpers.selector(root, group),
+  helpers.tabGroup(group),
+  helpers.tab(group, tabA, 'Alpha', '1', tabSelA),
+  helpers.tab(group, tabB, 'Beta', '2', tabSelB),
+  helpers.selector(tabSelA, splitA),
+  helpers.selector(tabSelB, splitB),
+  helpers.split(splitA, 'horizontal', '0.5', leftSelA, rightSelA),
+  helpers.split(splitB, 'horizontal', '0.5', leftSelB, rightSelB),
+  helpers.selector(leftSelA, leafA),
+  helpers.selector(rightSelA, leafB),
+  helpers.selector(leftSelB, leafC),
+  helpers.selector(rightSelB, leafD),
+  helpers.htmlView(leafA, 'A'),
+  helpers.htmlView(leafB, 'B'),
+  helpers.htmlView(leafC, 'C'),
+  helpers.htmlView(leafD, 'D'),
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.dragComponentViaTab(rightSelA, tabB, leftSelB, 'bottom');
+  await helpers.clickTab(tabA);
+  await expect(helpers.byId(tabSelA)).toHaveAttribute('data-selected', leafA);
+  await expect(helpers.byId(splitA)).toHaveCount(0);
+  await helpers.clickTab(tabB);
+  const selected = await helpers.byId(leftSelB).getAttribute('data-selected');
+  expect(selected).not.toBe(leafC);
+  await expect(helpers.panelById(tabB)).toHaveClass(/rdfop-tabs__panel--active/);
+} finally {
+  await helpers.cleanup(root);
+}
+""" .

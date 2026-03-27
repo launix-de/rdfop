@@ -34,6 +34,19 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 (set _schema_dir (path schema_file "..")) /* directory containing the schema file */
 (set _include_watchers (newsession)) /* map: filename -> old ttl content */
 
+/* startup cleanup: schema triples persist in the DB across restarts, so clear them
+   before reloading the current component set */
+(define _clear_schema_triples (lambda () (begin
+    (scan "rdf" "rdf"
+        '("s")
+        (lambda (s) (regexp_test s "^https://launix.de/rdfop/schema#"))
+        '("$update")
+        (lambda ($update) ($update))
+        (lambda (a b) b)
+        nil
+    )
+)))
+
 /* deploy a file watcher: watch file, on change delete old triples + insert new */
 (define _deploy_include_watcher (lambda (filename) (begin
     (set filepath (path _schema_dir filename))
@@ -65,6 +78,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 /* load the main schema file (components.ttl) with watch + hot-reload */
 (set _schema_old (newsession))
+(_clear_schema_triples)
 (watch schema_file (lambda (content) (begin
     (set old (_schema_old "ttl"))
     (if (not (nil? old))
@@ -120,10 +134,11 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 		(print "<thead><tr>")
 		(map_assoc o (lambda (k v) (print "<th>" (htmlentities k) "</th>")))
 		(print "</tr></thead><tbody>")
-	))))
-	(define resultrow (lambda (o) (begin
-		(print_header o)
-		(print "<tr>")
+))))
+
+		(define resultrow (lambda (o) (begin
+			(print_header o)
+			(print "<tr>")
 		(map_assoc o (lambda (k v) (begin (print "<td>") ((rdf_functions "render_link") v req res) (print "</td>"))))
 		(print "</tr>")
 	)))
@@ -214,6 +229,36 @@ END
     (set print (res "print"))
     (eval _render_link_tpl)
 )))
+
+/* emit aggregated component assets directly from the RDF store.
+   This avoids RDFHP SELECT loop artefacts like stray literal "nil" output
+   inside <style>/<script> blocks. */
+(define _emit_component_asset (lambda (predicate req res) (begin
+    (set print (res "print"))
+    (scan "rdf" "rdf"
+        '("p" "o")
+        (lambda (p o)
+            (and
+                (equal? p predicate)
+                (not (nil? o))
+                (not (equal? o "nil"))
+            )
+        )
+        '("o")
+        (lambda (o) (begin
+            (print o)
+            (print "\n")
+        ))
+        (lambda (a b) b)
+        nil
+    )
+)))
+(rdf_functions "emit_component_css" (lambda (req res)
+    (_emit_component_asset "https://launix.de/rdfop/schema#css" req res)
+))
+(rdf_functions "emit_component_js" (lambda (req res)
+    (_emit_component_asset "https://launix.de/rdfop/schema#js" req res)
+))
 
 /* === Component rendering ===
    render_component(component_iri, req, res)
@@ -356,6 +401,42 @@ END
     )
 )))
 
+/* GET /rdfop-playwright-tests — exposes embedded Playwright tests from the RDF store */
+(rdfop_routes "/rdfop-playwright-tests" (lambda (req res) (begin
+    ((res "header") "Content-Type" "application/json")
+    ((res "status") 200)
+    (define _playwright_test_prop (lambda (id prop) (begin
+        (set _value (newsession))
+        (try (lambda () (begin
+            (define resultrow (lambda (o) (_value "v" (o "?v"))))
+            (eval (parse_sparql "rdf" (concat
+                "SELECT ?v WHERE { <" id "> <" prop "> ?v } LIMIT 1"
+            )))
+        )) (lambda (e) nil))
+        (_value "v")
+    )))
+    (set _first (newsession))
+    (_first "v" true)
+    ((res "print") "[")
+    (define resultrow (lambda (o) (begin
+        (set test_id (o "?id"))
+        (set label (coalesce (_playwright_test_prop test_id "http://www.w3.org/2000/01/rdf-schema#label") test_id))
+        (set target (_playwright_test_prop test_id "https://launix.de/rdfop/schema#testFor"))
+        (set ord (coalesce (_playwright_test_prop test_id "https://launix.de/rdfop/schema#order") ""))
+        (set code (_playwright_test_prop test_id "https://launix.de/rdfop/schema#playwright"))
+        (if (_first "v") (_first "v" false) ((res "print") ","))
+        ((res "print") "{"
+            "\"id\":" (json_encode test_id) ","
+            "\"label\":" (json_encode label) ","
+            "\"for\":" (json_encode target) ","
+            "\"order\":" (json_encode ord) ","
+            "\"code\":" (json_encode code)
+        "}")
+    )))
+    (eval (parse_sparql "rdf" "SELECT ?id WHERE { ?id a <https://launix.de/rdfop/schema#PlaywrightTest> }"))
+    ((res "print") "]")
+)))
+
 /* POST /rdfop-create — create a new node: parent=ID&type=Tab (returns new node id) */
 (rdfop_routes "/rdfop-create" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/plain")
@@ -375,8 +456,25 @@ END
     ) (begin
         (set new_id (concat "urn:uuid:" (uuid)))
         (set sparql_parent (if (match (concat parent_id) (regex ":" _) true false) (concat "<" parent_id ">") parent_id))
-        /* order = unix timestamp so new items sort to the end */
-        (set order (format_date (now) "%Y%m%d%H%i%s"))
+        /* order = max(existing sibling order) + 1 so new items append at the end */
+        (set _order_max (newsession))
+        (_order_max "n" 0)
+        (try (lambda () (begin
+            (define resultrow (lambda (row) (begin
+                (set ord_raw (row "?ord"))
+                (set ord_num (try (lambda () (simplify ord_raw)) (lambda (e) nil)))
+                (if (and (not (nil? ord_num)) (> ord_num (_order_max "n")))
+                    (_order_max "n" ord_num)
+                )
+            )))
+            (eval (parse_sparql "rdf" (concat
+                "SELECT ?ord WHERE { "
+                /* RDFOP planner gap: scan rdfop:order first, then join back to the parent. */
+                "?child <https://launix.de/rdfop/schema#order> ?ord . "
+                sparql_parent " <https://launix.de/rdfop/schema#children> ?child }"
+            )))
+        )) (lambda (e) nil))
+        (set order (simplify (+ (_order_max "n") 1)))
         /* base triples: type, children link from parent, order */
         (set base_ttl (concat
             "<" new_id "> a <" node_type "> .\n"

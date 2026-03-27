@@ -26,7 +26,7 @@ rdfop:HTMLView_view a rdfop:EditorComponent ;
 PARAMETER ?id "id"
 SELECT ?h WHERE { ?id rdfop:html ?h }
 BEGIN
-?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#html&quot;}'>
+?><div class='rdfop-c' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#html&quot;}'>
   <button class='rdfop-edit-btn' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>&#x270E;</button>
   <iframe sandbox='allow-scripts' srcdoc='<?rdf PRINT HTML ?h ?>' style='width:100%;height:100%;border:none'></iframe>
 </div><?rdf
@@ -45,7 +45,7 @@ PARAMETER ?id "id"
 PARAMETER ?p "p"
 SELECT ?val WHERE { ?id ?p ?val }
 BEGIN
-?><div class='rdfop-c rdfop-c--editing' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'>
+?><div class='rdfop-c rdfop-c--editing' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;p&quot;:<?rdf PRINT JSON ?p ?>}' data-rdfop-old='<?rdf PRINT JSON ?val ?>'>
   <div class='rdfop-edit-toolbar'>
     <button onclick='rdfopCommit(this)'>&#x2714;</button>
     <button onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'>&#x2718;</button>

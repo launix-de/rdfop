@@ -20,25 +20,109 @@ rdfop:splitDirection a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:
 rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
 rdfop:Split rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?gp, ?sib WHERE { ?gp rdfop:children ?id . ?id rdfop:children ?child . ?id rdfop:children ?sib . FILTER(?sib != ?child) }
+SELECT ?gp, ?removedSel, ?sib, ?sibContent WHERE {
+  ?gp rdfop:children ?id .
+  ?id rdfop:children ?removedSel .
+  FILTER(?removedSel = ?child) .
+  ?id rdfop:children ?sib .
+  FILTER(?sib != ?removedSel) .
+  ?sib rdfop:children ?sibContent .
+  ?sib rdfop:selectedNode ?sibContent
+}
 BEGIN
-  DELETE { ?id rdfop:children ?child }
+  DELETE { ?id rdfop:children ?removedSel }
   DELETE { ?gp rdfop:children ?id }
-  INSERT { ?gp rdfop:children ?sib }
   DELETE { ?gp rdfop:selectedNode ?id }
-  INSERT { ?gp rdfop:selectedNode ?sib }
-  SELECT ?p, ?o WHERE { ?child ?p ?o } BEGIN DELETE { ?child ?p ?o } END
+  DELETE { ?sib rdfop:children ?sibContent }
+  DELETE { ?sib rdfop:selectedNode ?sibContent }
+  INSERT { ?gp rdfop:children ?sibContent }
+  INSERT { ?gp rdfop:selectedNode ?sibContent }
+  SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
   DELETE { ?id rdfop:children ?sib }
+  SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
   SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
 ELSE
-  SELECT ?gp WHERE { ?gp rdfop:children ?id }
+  SELECT ?gp, ?removedSel, ?sib, ?sibContent WHERE {
+    ?gp rdfop:children ?id .
+    ?id rdfop:children ?removedSel .
+    ?removedSel rdfop:children ?child .
+    ?id rdfop:children ?sib .
+    FILTER(?sib != ?removedSel) .
+    ?sib rdfop:children ?sibContent .
+    ?sib rdfop:selectedNode ?sibContent
+  }
   BEGIN
-    DELETE { ?id rdfop:children ?child }
+    DELETE { ?id rdfop:children ?removedSel }
     DELETE { ?gp rdfop:children ?id }
     DELETE { ?gp rdfop:selectedNode ?id }
-    SELECT ?p, ?o WHERE { ?child ?p ?o } BEGIN DELETE { ?child ?p ?o } END
+    DELETE { ?sib rdfop:children ?sibContent }
+    DELETE { ?sib rdfop:selectedNode ?sibContent }
+    INSERT { ?gp rdfop:children ?sibContent }
+    INSERT { ?gp rdfop:selectedNode ?sibContent }
+    SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
+    DELETE { ?id rdfop:children ?sib }
+    SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
     SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-    CALL rdfop_action("onChildRemoved", ?gp, "child", ?id)
+  ELSE
+    SELECT ?gp, ?removedSel, ?sib WHERE {
+      ?gp rdfop:children ?id .
+      ?id rdfop:children ?removedSel .
+      FILTER(?removedSel = ?child) .
+      ?id rdfop:children ?sib .
+      FILTER(?sib != ?removedSel)
+    }
+    BEGIN
+      DELETE { ?id rdfop:children ?removedSel }
+      DELETE { ?gp rdfop:children ?id }
+      DELETE { ?gp rdfop:selectedNode ?id }
+      SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
+      DELETE { ?id rdfop:children ?sib }
+      SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
+      SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+    ELSE
+      SELECT ?gp, ?removedSel, ?sib WHERE {
+        ?gp rdfop:children ?id .
+        ?id rdfop:children ?removedSel .
+        ?removedSel rdfop:children ?child .
+        ?id rdfop:children ?sib .
+        FILTER(?sib != ?removedSel)
+      }
+      BEGIN
+        DELETE { ?id rdfop:children ?removedSel }
+        DELETE { ?gp rdfop:children ?id }
+        DELETE { ?gp rdfop:selectedNode ?id }
+        SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
+        DELETE { ?id rdfop:children ?sib }
+        SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
+        SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+      ELSE
+        SELECT ?gp, ?removedSel WHERE {
+          ?gp rdfop:children ?id .
+          ?id rdfop:children ?removedSel .
+          FILTER(?removedSel = ?child)
+        }
+        BEGIN
+          DELETE { ?id rdfop:children ?removedSel }
+          DELETE { ?gp rdfop:children ?id }
+          DELETE { ?gp rdfop:selectedNode ?id }
+          SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
+          SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+        ELSE
+          SELECT ?gp, ?removedSel WHERE {
+            ?gp rdfop:children ?id .
+            ?id rdfop:children ?removedSel .
+            ?removedSel rdfop:children ?child
+          }
+          BEGIN
+            DELETE { ?id rdfop:children ?removedSel }
+            DELETE { ?gp rdfop:children ?id }
+            DELETE { ?gp rdfop:selectedNode ?id }
+            SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
+            SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
+          END
+        END
+      END
+    END
   END
 END
 """ .
@@ -133,7 +217,7 @@ document.addEventListener('rdfop:layoutChildRemoved', function(e) {
 PARAMETER ?id "id"
 SELECT ?dir, ?ratio WHERE { ?id rdfop:splitDirection ?dir . ?id rdfop:splitRatio ?ratio }
 BEGIN
-?><div class='rdfop-c rdfop-split rdfop-split--<?rdf PRINT HTML ?dir ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-ratio='<?rdf PRINT HTML ?ratio ?>' style='--ratio:<?rdf PRINT HTML ?ratio ?>'>
+?><div class='rdfop-c rdfop-split rdfop-split--<?rdf PRINT HTML ?dir ?>' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-rdfop-ratio='<?rdf PRINT HTML ?ratio ?>' style='--ratio:<?rdf PRINT HTML ?ratio ?>'>
   <?rdf
   SELECT ?child, ?ord WHERE { ?id rdfop:children ?child . ?child rdfop:order ?ord } ORDER BY ?ord
   BEGIN
