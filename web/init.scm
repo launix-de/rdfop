@@ -138,8 +138,8 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (set q (req "query"))
     (set bodyParts (req "bodyParts"))
     /* extract 'rdf' from query/bodyParts assoc lists */
-    (set rdfParam (try (lambda () (reduce_assoc (q) (lambda (acc k v) (if (equal? k "rdf") v acc)) nil)) (lambda (e) nil)))
-    (set rdfBody (try (lambda () (reduce_assoc (bodyParts) (lambda (acc k v) (if (equal? k "rdf") v acc)) nil)) (lambda (e) nil)))
+    (set rdfParam (_assoc_get_value q "rdf"))
+    (set rdfBody (_assoc_get_value bodyParts "rdf"))
     (set rdf (coalesce rdfParam rdfBody "SELECT ?s, ?p, ?o WHERE {?s ?p ?o}"))
 	(set print (res "print"))
 
@@ -147,17 +147,21 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) (print "<div class='error'>Parser error: <b>" (htmlentities e) "</b></div>"))))
 	/*(print "formula=" formula)*/
 	(set state (newsession))
-	(set print_header (once (lambda (o) (begin
+	(set print_header (once (lambda (row) (begin
 		(state "printed" true)
 		(print "<thead><tr>")
-		(map_assoc o (lambda (k v) (print "<th>" (htmlentities k) "</th>")))
+		(map_assoc row (lambda (k v) (print "<th>" (htmlentities k) "</th>")))
 		(print "</tr></thead><tbody>")
-))))
+	))))
 
-		(define resultrow (lambda (o) (begin
-			(print_header o)
-			(print "<tr>")
-		(map_assoc o (lambda (k v) (begin (print "<td>") ((rdf_functions "render_link") v req res) (print "</td>"))))
+	(define resultrow (lambda (row) (begin
+		(print_header row)
+		(print "<tr>")
+		(map_assoc row (lambda (k v) (begin
+			(print "<td>")
+			((rdf_functions "render_link") v req res)
+			(print "</td>")
+		)))
 		(print "</tr>")
 	)))
 
@@ -181,9 +185,14 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 	(print "</form>")
 	(print "</div>")
 
-)))
+	)))
 
-/* helper: render an RDFHP template string with ?id substituted */
+	(define _assoc_get_value (lambda (assoc key) (begin
+		(set source (try (lambda () (assoc)) (lambda (e) assoc)))
+		(try (lambda () (reduce_assoc source (lambda (acc k v) (if (equal? k key) v acc)) nil)) (lambda (e) nil))
+	)))
+
+	/* helper: render an RDFHP template string with ?id substituted */
 /* template compile cache: compiled formulas keyed by fnv_hash of template string */
 (set _tpl_cache (newsession))
 (define _compile_tpl (lambda (tpl) (begin
@@ -210,7 +219,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 PARAMETER ?value \"value\"
 SELECT ?t WHERE { ?value a ?t }
 BEGIN
-?><a href='#' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?value ?>}' onclick='event.preventDefault();rdfopOverlay(this)'><?rdf PRINT HTML ?value ?></a><?rdf
+?><a href='#' data-rdfop-id='<?rdf PRINT HTML ?value ?>' onclick='event.preventDefault();rdfopOverlay(this)'><?rdf PRINT HTML ?value ?></a><?rdf
 ELSE
 PRINT HTML ?value
 END
@@ -438,6 +447,34 @@ END
     (if comp
         ((rdf_functions "render_component") comp req res)
         ((rdf_functions "render_object") ((req "query") "id") req res)
+    )
+)))
+
+/* GET /rdfop-playwright-tests — exposes embedded Playwright tests from the RDF store */
+(rdfop_routes "/rdfop-query-json" (lambda (req res) (begin
+    ((res "header") "Content-Type" "application/x-ndjson")
+    ((res "status") 200)
+    (set q (req "query"))
+    (set bodyParts (req "bodyParts"))
+    (set rdfParam (_assoc_get_value q "rdf"))
+    (set rdfBody (_assoc_get_value bodyParts "rdf"))
+    (set rdf (coalesce rdfParam rdfBody "SELECT ?s, ?p, ?o WHERE {?s ?p ?o}"))
+    (define formula (try (lambda () (parse_sparql "rdf" rdf)) (lambda (e) nil)))
+    (if (nil? formula)
+        (begin
+            ((res "status") 400)
+            ((res "print") "Parser error")
+        )
+        (try
+            (lambda () (begin
+                (define resultrow (res "jsonl"))
+                (eval formula)
+            ))
+            (lambda (e) (begin
+                ((res "status") 400)
+                ((res "print") (htmlentities e))
+            ))
+        )
     )
 )))
 

@@ -13,20 +13,131 @@ rdfop:SPARQLConsole rdfop:view rdfop:SPARQLConsole_view .
 rdfop:SPARQLConsole_view a rdfop:EditorComponent ;
   rdfop:css """.rdfop-sparql { display:flex; flex-direction:column; height:100%; padding:1em; box-sizing:border-box; }
 .rdfop-sparql__editor { flex-shrink:0; }
-.rdfop-sparql__results { flex:1; overflow:auto; margin-top:1em; }""" ;
+.rdfop-sparql__results { flex:1; overflow:auto; margin-top:1em; }
+.rdfop-sparql__results a { color:inherit; }
+.rdfop-sparql__error { color:#b91c1c; padding:12px; }""" ;
   rdfop:js """
+window.__rdfopSparqlLinkCache = window.__rdfopSparqlLinkCache || {};
+
+window.rdfopSparqlRef = function(value) {
+  if (value == null) return null;
+  var s = String(value);
+  if (!s || /\s/.test(s)) return null;
+  if (/^-?\d+(?:\.\d+)?$/.test(s)) return null;
+  if (s === 'true' || s === 'false' || s === 'nil' || s === 'a') return null;
+  if (s.indexOf(':') !== -1) return '<' + s + '>';
+  return s;
+};
+
+window.rdfopSparqlCanLink = async function(value) {
+  var ref = window.rdfopSparqlRef(value);
+  if (!ref) return false;
+  if (!window.__rdfopSparqlLinkCache[ref]) {
+    window.__rdfopSparqlLinkCache[ref] = (async function() {
+      try {
+        var body = 'rdf=' + encodeURIComponent('SELECT ?t WHERE { ' + ref + ' a ?t } LIMIT 1');
+        var resp = await fetch('/rdfop-query-json', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body
+        });
+        if (!resp.ok) return false;
+        var text = await resp.text();
+        return /\S/.test(text);
+      } catch (e) {
+        return false;
+      }
+    })();
+  }
+  return await window.__rdfopSparqlLinkCache[ref];
+};
+
+window.rdfopSparqlRenderCell = async function(td, value) {
+  var text = value == null ? '' : String(value);
+  td.textContent = text;
+  if (!text) return;
+  if (!(await window.rdfopSparqlCanLink(text))) return;
+  var a = document.createElement('a');
+  a.href = '#';
+  a.dataset.rdfopId = text;
+  a.textContent = text;
+  a.onclick = function(event) {
+    event.preventDefault();
+    rdfopOverlay(this);
+  };
+  td.replaceChildren(a);
+};
+
+window.rdfopSparqlRender = function(results, payload) {
+  results.innerHTML = '';
+  if (!payload || payload.ok === false) {
+    var err = document.createElement('div');
+    err.className = 'rdfop-sparql__error';
+    err.textContent = payload && payload.error ? String(payload.error) : 'Query failed.';
+    results.appendChild(err);
+    return;
+  }
+  var rows = Array.isArray(payload.rows) ? payload.rows : [];
+  var card = document.createElement('div');
+  card.className = 'card';
+  var table = document.createElement('table');
+  table.className = 'table';
+  card.appendChild(table);
+  results.appendChild(card);
+  if (!rows.length) {
+    var tbodyEmpty = document.createElement('tbody');
+    var trEmpty = document.createElement('tr');
+    var tdEmpty = document.createElement('td');
+    tdEmpty.className = 'empty';
+    tdEmpty.textContent = 'No results.';
+    trEmpty.appendChild(tdEmpty);
+    tbodyEmpty.appendChild(trEmpty);
+    table.appendChild(tbodyEmpty);
+    return;
+  }
+  var headers = Object.keys(rows[0] || {});
+  var thead = document.createElement('thead');
+  var headRow = document.createElement('tr');
+  headers.forEach(function(name) {
+    var th = document.createElement('th');
+    th.textContent = name;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  rows.forEach(function(row) {
+    var tr = document.createElement('tr');
+    headers.forEach(function(name) {
+      var td = document.createElement('td');
+      window.rdfopSparqlRenderCell(td, row[name]);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+};
+
 window.rdfopSparqlExec = async function(btn) {
   var form = btn.closest('form');
   var results = form.closest('.rdfop-sparql').querySelector('.rdfop-sparql__results');
   var body = new URLSearchParams(new FormData(form)).toString();
-  var resp = await fetch('/rdf', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body });
-  results.innerHTML = await resp.text();
+  var resp = await fetch('/rdfop-query-json', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body });
+  var text = await resp.text();
+  if (!resp.ok) {
+    window.rdfopSparqlRender(results, { ok:false, error:text || 'Query failed.' });
+    return;
+  }
+  var rows = (text || '').split(/\r?\n/).filter(function(line) { return line.trim() !== ''; }).map(function(line) {
+    return JSON.parse(line);
+  });
+  window.rdfopSparqlRender(results, { ok:true, rows:rows });
 };""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 SELECT ?dummy WHERE { ?id a rdfop:SPARQLConsole }
 BEGIN
-?><div class='rdfop-c rdfop-sparql' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+?><div class='rdfop-c rdfop-sparql' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <div class='rdfop-sparql__editor'>
     <h3>SPARQL Console</h3>
     <form>
@@ -39,3 +150,58 @@ BEGIN
   <div class='rdfop-sparql__results'></div>
 </div><?rdf
 END""" .
+
+################################################################
+# Tests
+################################################################
+
+rdfop:test_sparql_console_renders_plain_result_table a rdfop:PlaywrightTest ;
+  rdfs:label "SPARQL Console renders a plain result fragment with a single-row table" ;
+  rdfop:testFor rdfop:SPARQLConsole ;
+  rdfop:order "5" ;
+  rdfop:playwright """
+const id = helpers.id();
+await helpers.insert(`${helpers.sid(id)} a <${helpers.S}SPARQLConsole> .`);
+try {
+  await helpers.goto(id);
+  const root = helpers.byId(id);
+  await root.locator('textarea[name=\"rdf\"]').fill(`SELECT ?p, ?o WHERE { ${helpers.sid(id)} ?p ?o }`);
+  await root.locator('button').getByText('Execute').click();
+  const results = root.locator('.rdfop-sparql__results');
+  await expect(results.locator('.rdf-result-snippet')).toHaveCount(0);
+  await expect(results.locator('h2')).toHaveCount(0);
+  await expect(results.locator('table.table')).toHaveCount(1);
+  await expect(results.locator('thead th')).toHaveCount(2);
+  await expect(results.locator('thead th')).toHaveText(['?p', '?o']);
+  await expect(results.locator('tbody tr')).toHaveCount(1);
+  await expect(results.locator('tbody tr').first().locator('td')).toHaveCount(2);
+  await expect(results.locator('tbody tr a')).toHaveCount(1);
+} finally {
+  await helpers.cleanup(id);
+}
+""" .
+
+rdfop:test_sparql_console_renders_overlay_links_for_entities a rdfop:PlaywrightTest ;
+  rdfs:label "SPARQL Console renders entity values as overlay links" ;
+  rdfop:testFor rdfop:SPARQLConsole ;
+  rdfop:order "6" ;
+  rdfop:playwright """
+const id = helpers.id();
+await helpers.insert(`${helpers.sid(id)} a <${helpers.S}SPARQLConsole> .`);
+try {
+  await helpers.goto(id);
+  const root = helpers.byId(id);
+  await root.locator('textarea[name=\"rdf\"]').fill(`SELECT ?p, ?o WHERE { ${helpers.sid(id)} ?p ?o }`);
+  await root.locator('button').getByText('Execute').click();
+  const row = root.locator('.rdfop-sparql__results tbody tr').first();
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('td').nth(0).locator('a')).toHaveCount(0);
+  const objectLink = row.locator('td').nth(1).locator('a');
+  await expect(objectLink).toHaveCount(1);
+  await expect(objectLink).toHaveText(`${helpers.S}SPARQLConsole`);
+  await expect(objectLink).toHaveAttribute('href', '#');
+  await expect(objectLink).toHaveAttribute('data-rdfop-id', `${helpers.S}SPARQLConsole`);
+} finally {
+  await helpers.cleanup(id);
+}
+""" .

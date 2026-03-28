@@ -90,9 +90,39 @@ PARAMETER ?id "id"
       function openOverlay(url){ return overlayFetch(url, null, false); }
       window.openOverlay = openOverlay;
 
+      window.rdfopMountNode = function(root) {
+        if (!root) return;
+        var detailRoots = [];
+        var editorRoots = [];
+        var typeListRoots = [];
+        var typeDetailRoots = [];
+        if (root.matches && root.matches('.rdfop-detail')) detailRoots.push(root);
+        if (root.matches && root.matches('.rdfop-ecedit')) editorRoots.push(root);
+        if (root.matches && root.matches('.rdfop-typelist')) typeListRoots.push(root);
+        if (root.matches && root.matches('.rdfop-typedetail')) typeDetailRoots.push(root);
+        root.querySelectorAll && root.querySelectorAll('.rdfop-detail').forEach(function(node) {
+          detailRoots.push(node);
+        });
+        root.querySelectorAll && root.querySelectorAll('.rdfop-ecedit').forEach(function(node) {
+          editorRoots.push(node);
+        });
+        root.querySelectorAll && root.querySelectorAll('.rdfop-typelist').forEach(function(node) {
+          typeListRoots.push(node);
+        });
+        root.querySelectorAll && root.querySelectorAll('.rdfop-typedetail').forEach(function(node) {
+          typeDetailRoots.push(node);
+        });
+        if (window.rdfopDetailInit) detailRoots.forEach(function(node) { window.rdfopDetailInit(node); });
+        if (window.rdfopEditorComponentInit) editorRoots.forEach(function(node) { window.rdfopEditorComponentInit(node); });
+        if (window.rdfopTypeListInit) typeListRoots.forEach(function(node) { window.rdfopTypeListInit(node); });
+        if (window.rdfopTypeDetailInit) typeDetailRoots.forEach(function(node) { window.rdfopTypeDetailInit(node); });
+        if (window.rdfopTabsInit) rdfopTabsInit(root);
+      };
+
       function openOverlayHTML(html){
         const { content, closeBtn } = buildOverlaySkeleton();
         content.innerHTML = html;
+        window.rdfopMountNode(content);
         closeBtn.focus();
       }
       window.openOverlayHTML = openOverlayHTML;
@@ -127,6 +157,7 @@ PARAMETER ?id "id"
           const resp = await fetch(url, opts);
           const html = await resp.text();
           target.content.innerHTML = html;
+          window.rdfopMountNode(target.content);
         } catch (e) {
           target.content.innerHTML = '<div style=\"color:#b91c1c\">Request failed.</div>';
         }
@@ -541,8 +572,12 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
 
       /* open entity detail in overlay */
       window.rdfopOverlay = async function(el) {
-        var p = JSON.parse(el.dataset.rdfopParams || '{}');
-        var resp = await fetch('/rdfop-render?comp=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23ObjectDetail_view&id=' + encodeURIComponent(p.id));
+        var p = {};
+        if (el && el.dataset) {
+          if (el.dataset.rdfopParams) p = JSON.parse(el.dataset.rdfopParams || '{}');
+          else if (typeof el.dataset.rdfopId !== 'undefined') p.id = el.dataset.rdfopId;
+        }
+        var resp = await fetch('/rdfop-render?comp=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23ObjectDetail_view&id=' + encodeURIComponent(p.id || ''));
         var html = await resp.text();
         openOverlayHTML(html);
       };
@@ -616,14 +651,12 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         var node = tpl.content.firstElementChild;
         canvas.innerHTML = '';
         canvas.appendChild(node);
-        node.querySelectorAll('script').forEach(function(s){ eval(s.textContent); });
         /* restore active tabs */
         activeTabs.forEach(function(id) {
           var tab = document.querySelector('.rdfop-tabs__tab[data-tab-id="'+id+'"]');
           if (tab) tab.click();
         });
-        /* init any new TabGroups */
-        if (window.rdfopTabsInit) rdfopTabsInit(canvas);
+        window.rdfopMountNode(canvas);
       };
 
       /* Ctrl+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo */
@@ -642,13 +675,10 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           tpl.innerHTML = html;
           var node = tpl.content.firstElementChild;
           el.replaceWith(node);
-          /* execute inline scripts that outerHTML would skip */
-          node.querySelectorAll('script').forEach(function(s) { eval(s.textContent); });
           /* auto-focus + auto-size for textedit inputs */
           var te = node.querySelector('.rdfop-textedit--editing input');
           if (te) { if (window.rdfopTextFit) rdfopTextFit(te); te.focus(); te.select(); }
-          /* init TabGroups + Splits in new content */
-          if (window.rdfopTabsInit) rdfopTabsInit(node);
+          window.rdfopMountNode(node);
         } catch(e) { console.error('rdfopSwap', e); }
       };
 
