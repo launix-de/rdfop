@@ -45,7 +45,7 @@ Copyright (C) 2024  Carl-Philip Hänsch
 	(parser '((atom "CALL" true) (define func rdf_constant) "(" (define args (* rdfhp_expression ",")) ")") '("call" func args))
 	(parser '((define param rdf_variable) "=" (atom "CALL" true) (define func rdf_constant) "(" (define args (* rdfhp_expression ",")) ")") '("setcall" param func args))
 )))
-(define rdfhp_program (parser '((define statements (* rdfhp_statement)) (atom "")) statements "^(?:/\\*.*?\\*/|--[^\r\n]*[\r\n]|--[^\r\n]*$|[\r\n\t ]+)+"))
+(define rdfhp_program (parser '((define statements (* rdfhp_statement)) (atom "")) statements "^(?:(?s:/\\*.*?\\*/)|--[^\r\n]*[\r\n]|--[^\r\n]*$|[\r\n\t ]+)+"))
 
 (define rdfhp_filters '(
 	"RAW" concat
