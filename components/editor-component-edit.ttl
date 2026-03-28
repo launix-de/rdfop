@@ -1,0 +1,232 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# EditorComponent edit view
+################################################################
+
+rdfop:EditorComponent rdfop:edit rdfop:EditorComponent_edit .
+
+rdfop:EditorComponent_edit a rdfop:EditorComponent ;
+  rdfop:css """
+.rdfop-ecedit { display:flex; flex-direction:column; gap:1rem; padding:1rem; width:min(100%, 1320px); max-width:100%; min-width:0; height:min(86vh, 980px); box-sizing:border-box; }
+.rdfop-ecedit__header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.rdfop-ecedit__header > :first-child { flex:1 1 20rem; min-width:0; }
+.rdfop-ecedit__grid { display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(20rem, .85fr); gap:1rem; min-height:0; flex:1 1 auto; }
+.rdfop-ecedit__card { display:flex; flex-direction:column; gap:.75rem; min-height:0; }
+.rdfop-ecedit__toolbar { display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem; flex-wrap:wrap; }
+.rdfop-ecedit__toolbar h3 { margin:0; }
+.rdfop-ecedit__actions { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end; align-items:flex-start; max-width:100%; }
+.rdfop-ecedit__actions .btn { white-space:nowrap; }
+.rdfop-ecedit__stack { display:grid; grid-template-rows:minmax(18rem, 1.5fr) minmax(9rem, .7fr) minmax(9rem, .8fr); gap:.85rem; min-height:0; }
+.rdfop-ecedit__section { display:flex; flex-direction:column; gap:.45rem; min-height:0; }
+.rdfop-ecedit__section h3 { margin:0; font-size:.95rem; }
+.rdfop-ecedit__editor { width:100%; min-height:0; height:100%; resize:none; box-sizing:border-box; font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding:.75rem; border:1px solid var(--ring); border-radius:.5rem; background:var(--panel); color:var(--fg); }
+.rdfop-ecedit__hint { color:var(--muted); font-size:.9rem; }
+.rdfop-ecedit__previewbar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+.rdfop-ecedit__previewbar label { font-size:.85rem; color:var(--muted); }
+.rdfop-ecedit__previewinput { flex:1 1 18rem; min-width:0; border:1px solid var(--ring); border-radius:.5rem; padding:.55rem .7rem; font:inherit; background:#fff; }
+.rdfop-ecedit__previewframe { width:100%; height:100%; min-height:26rem; border:1px solid var(--ring); border-radius:.75rem; background:#fff; }
+.rdfop-ecedit__status { color:var(--muted); font-size:.82rem; min-height:1.2em; }
+@media (max-width: 1180px) {
+  .rdfop-ecedit { height:auto; }
+  .rdfop-ecedit__grid { grid-template-columns:minmax(0, 1fr); }
+  .rdfop-ecedit__stack { grid-template-rows:minmax(16rem, 1.2fr) minmax(8rem, .6fr) minmax(8rem, .7fr); }
+  .rdfop-ecedit__previewframe { min-height:20rem; }
+}
+""" ;
+  rdfop:js """
+window.rdfopEditorComponentStatus = function(root, text) {
+  var node = root && root.querySelector('.rdfop-ecedit__status');
+  if (node) node.textContent = text || '';
+};
+
+window.rdfopEditorComponentCollect = function(root) {
+  var out = {};
+  root.querySelectorAll('[data-prop]').forEach(function(area) {
+    out[area.dataset.prop] = area.value || '';
+  });
+  return out;
+};
+
+window.rdfopEditorComponentResetAll = function(btn) {
+  var root = btn.closest('.rdfop-ecedit');
+  if (!root) return;
+  root.querySelectorAll('[data-prop]').forEach(function(area) {
+    area.value = area.dataset.old || '';
+  });
+  window.rdfopEditorComponentStatus(root, 'reset');
+  window.rdfopEditorComponentSchedulePreview(root);
+};
+
+window.rdfopEditorComponentSaveAll = async function(btn) {
+  var root = btn.closest('.rdfop-ecedit');
+  if (!root) return;
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  if (!p.id) return;
+  var sid = p.id.includes(':') ? '<' + p.id + '>' : p.id;
+  var deletes = [];
+  var inserts = [];
+  root.querySelectorAll('[data-prop]').forEach(function(area) {
+    var prop = area.dataset.prop;
+    var oldVal = area.dataset.old || '';
+    var newVal = area.value || '';
+    if (oldVal === newVal) return;
+    if (oldVal !== '') deletes.push(sid + ' <' + prop + '> ' + JSON.stringify(oldVal) + ' .');
+    if (newVal !== '') inserts.push(sid + ' <' + prop + '> ' + JSON.stringify(newVal) + ' .');
+  });
+  if (!deletes.length && !inserts.length) {
+    window.rdfopEditorComponentStatus(root, 'no changes');
+    return;
+  }
+  await rdfopSave(deletes.join('\\n'), inserts.join('\\n'));
+  root.querySelectorAll('[data-prop]').forEach(function(area) {
+    area.dataset.old = area.value || '';
+  });
+  window.rdfopEditorComponentStatus(root, 'saved');
+  window.rdfopEditorComponentSchedulePreview(root, true);
+};
+
+window.rdfopEditorComponentRenderPreview = async function(root) {
+  if (!root) return;
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  var frame = root.querySelector('.rdfop-ecedit__previewframe');
+  var subjectInput = root.querySelector('.rdfop-ecedit__previewinput');
+  if (!frame || !subjectInput) return;
+  var subjectId = (subjectInput.value || '').trim();
+  if (!subjectId) {
+    frame.srcdoc = '<!doctype html><html><body style=\"font-family:sans-serif;padding:12px;color:#64748b\">No preview subject selected.</body></html>';
+    window.rdfopEditorComponentStatus(root, 'preview idle');
+    return;
+  }
+  var fields = window.rdfopEditorComponentCollect(root);
+  var body = new URLSearchParams();
+  body.set('component', p.id || '');
+  body.set('id', subjectId);
+  body.set('template', fields['https://launix.de/rdfop/schema#componentTemplate'] || '');
+  body.set('css', fields['https://launix.de/rdfop/schema#css'] || '');
+  body.set('js', fields['https://launix.de/rdfop/schema#js'] || '');
+  window.rdfopEditorComponentStatus(root, 'previewing …');
+  try {
+    var resp = await fetch('/rdfop-preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: body.toString()
+    });
+    frame.srcdoc = await resp.text();
+    window.rdfopEditorComponentStatus(root, 'preview updated');
+  } catch (e) {
+    frame.srcdoc = '<!doctype html><html><body style=\"font-family:sans-serif;padding:12px;color:#b91c1c\">Preview failed.</body></html>';
+    window.rdfopEditorComponentStatus(root, 'preview failed');
+  }
+};
+
+window.rdfopEditorComponentSchedulePreview = function(root, immediate) {
+  if (!root) return;
+  clearTimeout(root.__rdfopPreviewTimer);
+  root.__rdfopPreviewTimer = setTimeout(function() {
+    window.rdfopEditorComponentRenderPreview(root);
+  }, immediate ? 0 : 450);
+};
+
+window.rdfopEditorComponentInit = function(root) {
+  if (!root || root.dataset.previewInit === '1') return;
+  root.dataset.previewInit = '1';
+  root.querySelectorAll('[data-prop]').forEach(function(area) {
+    area.addEventListener('input', function() {
+      window.rdfopEditorComponentSchedulePreview(root, false);
+    });
+  });
+  var subjectInput = root.querySelector('.rdfop-ecedit__previewinput');
+  if (subjectInput) {
+    var list = subjectInput.list;
+    if (list && list.options && list.options.length) {
+      var current = (subjectInput.value || '').trim();
+      var hasCurrent = Array.from(list.options).some(function(opt) { return opt.value === current; });
+      if (!hasCurrent) subjectInput.value = list.options[0].value;
+    }
+    subjectInput.addEventListener('change', function() {
+      window.rdfopEditorComponentSchedulePreview(root, true);
+    });
+  }
+  window.rdfopEditorComponentSchedulePreview(root, true);
+};
+""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-c rdfop-ecedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <div class='rdfop-ecedit__header'>
+    <div>
+      <h2>Edit Component</h2>
+      <div class='rdfop-ecedit__hint'><?rdf PRINT HTML ?id ?></div>
+    </div>
+    <div class='rdfop-ecedit__actions'>
+      <button class='btn primary' onclick='rdfopEditorComponentSaveAll(this)'>Save</button>
+      <button class='btn' onclick='rdfopEditorComponentResetAll(this)'>Reset</button>
+      <button class='btn' onclick='rdfopEditorComponentSchedulePreview(this.closest(&quot;.rdfop-ecedit&quot;), true)'>Refresh Preview</button>
+    </div>
+  </div>
+  <div class='rdfop-ecedit__grid'>
+    <div class='card pad rdfop-ecedit__card'>
+      <div class='rdfop-ecedit__toolbar'>
+        <h3>Source</h3>
+        <div class='rdfop-ecedit__status'></div>
+      </div>
+      <div class='rdfop-ecedit__stack'>
+        <div class='rdfop-ecedit__section'>
+          <h3>Template</h3>
+          <?rdf
+          SELECT ?val WHERE { ?id rdfop:componentTemplate ?val }
+          BEGIN
+          ?><textarea class='rdfop-ecedit__editor' data-prop='https://launix.de/rdfop/schema#componentTemplate' data-old='<?rdf PRINT JSON ?val ?>'><?rdf PRINT HTML ?val ?></textarea><?rdf
+          ELSE
+          ?><textarea class='rdfop-ecedit__editor' data-prop='https://launix.de/rdfop/schema#componentTemplate' data-old=''></textarea><?rdf
+          END
+          ?>
+        </div>
+        <div class='rdfop-ecedit__section'>
+          <h3>CSS</h3>
+          <?rdf
+          SELECT ?val WHERE { ?id rdfop:css ?val }
+          BEGIN
+          ?><textarea class='rdfop-ecedit__editor' data-prop='https://launix.de/rdfop/schema#css' data-old='<?rdf PRINT JSON ?val ?>'><?rdf PRINT HTML ?val ?></textarea><?rdf
+          ELSE
+          ?><textarea class='rdfop-ecedit__editor' data-prop='https://launix.de/rdfop/schema#css' data-old=''></textarea><?rdf
+          END
+          ?>
+        </div>
+        <div class='rdfop-ecedit__section'>
+          <h3>JavaScript</h3>
+          <?rdf
+          SELECT ?val WHERE { ?id rdfop:js ?val }
+          BEGIN
+          ?><textarea class='rdfop-ecedit__editor' data-prop='https://launix.de/rdfop/schema#js' data-old='<?rdf PRINT JSON ?val ?>'><?rdf PRINT HTML ?val ?></textarea><?rdf
+          ELSE
+          ?><textarea class='rdfop-ecedit__editor' data-prop='https://launix.de/rdfop/schema#js' data-old=''></textarea><?rdf
+          END
+          ?>
+        </div>
+      </div>
+    </div>
+    <div class='card pad rdfop-ecedit__card'>
+      <div class='rdfop-ecedit__toolbar'>
+        <h3>Preview</h3>
+      </div>
+      <div class='rdfop-ecedit__previewbar'>
+        <label for='rdfop-preview-subject'>Subject</label>
+        <input id='rdfop-preview-subject' class='rdfop-ecedit__previewinput' list='rdfop-preview-subjects' value='<?rdf PRINT HTML ?id ?>' placeholder='urn:uuid:... or https://...'>
+        <datalist id='rdfop-preview-subjects'>
+          <?rdf
+          SELECT ?subject WHERE { ?type ?method ?id . ?method a rdfop:Method . ?subject a ?type }
+          BEGIN
+          ?><option value='<?rdf PRINT HTML ?subject ?>'></option><?rdf
+          END
+          ?>
+        </datalist>
+      </div>
+      <iframe class='rdfop-ecedit__previewframe' sandbox='allow-scripts allow-same-origin allow-forms allow-popups'></iframe>
+    </div>
+  </div>
+</div><?rdf
+""" .

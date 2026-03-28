@@ -1,0 +1,319 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# TypeList + TypeDetail
+################################################################
+
+rdfop:TypeList a rdfop:EntityType ; rdfs:label "Type List" .
+rdfop:TypeList rdfop:paletteVisible "true" .
+rdfop:TypeList rdfop:view rdfop:TypeList_view .
+rdfop:TypeList rdfop:typeListRows rdfop:TypeList_rows .
+
+rdfop:TypeDetail a rdfop:EntityType ; rdfs:label "Type Detail" .
+rdfop:TypeDetail rdfop:view rdfop:TypeDetail_view .
+
+rdfop:typeListRows a rdfop:Method .
+rdfop:typeSummary a rdfop:Method .
+rdfop:attributeSummary a rdfop:Method .
+rdfop:typeAttributesRows a rdfop:Method .
+rdfop:typeMethodsRows a rdfop:Method .
+rdfop:EntityType rdfop:typeSummary rdfop:EntityType_typeSummary .
+rdfop:EntityType rdfop:typeAttributesRows rdfop:EntityType_typeAttributesRows .
+rdfop:EntityType rdfop:typeMethodsRows rdfop:EntityType_typeMethodsRows .
+rdfop:Attribute rdfop:attributeSummary rdfop:Attribute_attributeSummary .
+
+rdfop:TypeList_view a rdfop:EditorComponent ;
+  rdfop:css """
+.rdfop-typelist { padding:1rem; }
+.rdfop-typelist__head { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
+.rdfop-typelist__hint { color:var(--muted); font-size:.9rem; max-width:48rem; }
+.rdfop-typelist__actions { display:flex; gap:.5rem; }
+.rdfop-typelist__table td,
+.rdfop-typelist__table th { vertical-align:top; }
+.rdfop-typelist__name { font-weight:600; }
+.rdfop-typelist__meta { color:var(--muted); font-size:.86rem; }
+.rdfop-typelist__pill { display:inline-flex; align-items:center; border:1px solid var(--ring, #cbd5e1); border-radius:999px; padding:.1rem .5rem; font-size:.78rem; background:#fff; }
+.rdfop-typelist__pill--on { background:#ecfdf5; border-color:#86efac; color:#166534; }
+.rdfop-typelist__pill--off { background:#f8fafc; color:#64748b; }
+.rdfop-typedetail__loading { color:var(--muted); }
+""" ;
+  rdfop:js """
+window.rdfopTypeListInit = async function(root) {
+  if (!root || root.dataset.rowsInit === '1') return;
+  root.dataset.rowsInit = '1';
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  var tbody = root.querySelector('.rdfop-typelist__rows');
+  if (!tbody || !p.id) return;
+  try {
+    var resp = await fetch('/typeListRows/' + encodeURIComponent(p.id));
+    tbody.innerHTML = await resp.text();
+    var rows = Array.from(tbody.querySelectorAll('.rdfop-typelist__row[data-type-id]'));
+    await Promise.all(rows.map(async function(row) {
+      var typeId = row.dataset.typeId;
+      if (!typeId) return;
+      try {
+        var summaryResp = await fetch('/typeSummary/' + encodeURIComponent(typeId));
+        var html = await summaryResp.text();
+        var probe = document.createElement('div');
+        probe.innerHTML = html;
+        var summary = probe.querySelector('.rdfop-typesummary');
+        var label = summary && summary.querySelector('.rdfop-typesummary__label');
+        var palette = summary && summary.querySelector('.rdfop-typesummary__palette');
+        var labelCell = row.querySelector('.rdfop-typelist__labelcell');
+        var paletteCell = row.querySelector('.rdfop-typelist__palettecell');
+        if (labelCell) labelCell.textContent = label ? label.textContent : '';
+        if (paletteCell) {
+          var visible = palette ? palette.dataset.visible : 'false';
+          paletteCell.innerHTML = visible === 'true'
+            ? '<span class=\"rdfop-typelist__pill rdfop-typelist__pill--on\">visible</span>'
+            : '<span class=\"rdfop-typelist__pill rdfop-typelist__pill--off\">hidden</span>';
+        }
+      } catch (e) {
+        var labelCell = row.querySelector('.rdfop-typelist__labelcell');
+        var paletteCell = row.querySelector('.rdfop-typelist__palettecell');
+        if (labelCell) labelCell.textContent = '';
+        if (paletteCell) paletteCell.innerHTML = '<span class=\"rdfop-typelist__pill rdfop-typelist__pill--off\">unknown</span>';
+      }
+    }));
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan=\"4\" class=\"empty\">Could not load types.</td></tr>';
+  }
+};
+
+window.rdfopTypeDetailInit = async function(root) {
+  if (!root || root.dataset.rowsInit === '1') return;
+  root.dataset.rowsInit = '1';
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  if (!p.typeId) return;
+  var attrs = root.querySelector('.rdfop-typedetail__attrs');
+  var methods = root.querySelector('.rdfop-typedetail__methods-body');
+  try {
+    if (attrs) {
+      var attrsResp = await fetch('/typeAttributesRows/' + encodeURIComponent(p.typeId));
+      attrs.innerHTML = await attrsResp.text();
+      var attrRows = Array.from(attrs.querySelectorAll('.rdfop-typedetail__attrrow[data-attr-id]'));
+      await Promise.all(attrRows.map(async function(row) {
+        var attrId = row.dataset.attrId;
+        if (!attrId) return;
+        try {
+          var summaryResp = await fetch('/attributeSummary/' + encodeURIComponent(attrId));
+          var html = await summaryResp.text();
+          var probe = document.createElement('div');
+          probe.innerHTML = html;
+          var summary = probe.querySelector('.rdfop-attrsummary');
+          var name = summary && summary.querySelector('.rdfop-attrsummary__name');
+          var type = summary && summary.querySelector('.rdfop-attrsummary__type');
+          var card = summary && summary.querySelector('.rdfop-attrsummary__card');
+          var nameCell = row.querySelector('.rdfop-typedetail__attr-name');
+          var typeCell = row.querySelector('.rdfop-typedetail__attr-type');
+          var cardCell = row.querySelector('.rdfop-typedetail__attr-card');
+          if (nameCell) nameCell.textContent = name ? name.textContent : '';
+          if (typeCell) typeCell.innerHTML = type ? type.innerHTML : '';
+          if (cardCell) cardCell.textContent = card ? card.textContent : '';
+        } catch (e) {
+          var nameCell = row.querySelector('.rdfop-typedetail__attr-name');
+          var cardCell = row.querySelector('.rdfop-typedetail__attr-card');
+          if (nameCell) nameCell.textContent = '';
+          if (cardCell) cardCell.textContent = '';
+        }
+      }));
+    }
+    if (methods) {
+      var methodsResp = await fetch('/typeMethodsRows/' + encodeURIComponent(p.typeId));
+      methods.innerHTML = await methodsResp.text();
+    }
+  } catch (e) {
+    if (attrs) attrs.innerHTML = '<tr><td colspan=\"4\" class=\"empty\">Could not load attributes.</td></tr>';
+    if (methods) methods.innerHTML = '<tr><td colspan=\"3\" class=\"empty\">Could not load methods.</td></tr>';
+  }
+};
+""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+@PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-c rdfop-typelist' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <div class='rdfop-typelist__head'>
+    <div>
+      <h2>Types</h2>
+      <div class='rdfop-typelist__hint'>Inspect entity types, their attributes, and their method bindings. Use “Inspect” to open the type detail overlay.</div>
+    </div>
+  </div>
+  <div class='card'>
+    <table class='table rdfop-typelist__table'>
+      <tr><th>Type</th><th>Label</th><th>Palette</th><th>Actions</th></tr>
+      <tbody class='rdfop-typelist__rows'><tr><td colspan='4' class='rdfop-typedetail__loading'>Loading …</td></tr></tbody>
+    </table>
+  </div>
+</div><?rdf
+""" .
+
+rdfop:TypeList_rows a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+@PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+PARAMETER ?id "id"
+?><!----><?rdf
+SELECT ?type WHERE { ?type a rdfop:EntityType }
+BEGIN
+?><tr class='rdfop-typelist__row' data-type-id='<?rdf PRINT HTML ?type ?>'>
+  <td><div class='rdfop-typelist__name'><?rdf CALL render_link(?type, REQ, RES) ?></div></td>
+  <td class='rdfop-typelist__labelcell'></td>
+  <td class='rdfop-typelist__palettecell'><span class='rdfop-typelist__pill rdfop-typelist__pill--off'>…</span></td>
+  <td><div class='rdfop-typelist__actions'><a class='btn' href='/rdfop-render?comp=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23TypeDetail_view&amp;typeId=<?rdf PRINT URL ?type ?>' onclick='event.preventDefault();openOverlay(this.href)'>Inspect</a></div></td>
+</tr><?rdf
+ELSE
+?><tr><td colspan='4' class='empty'>No entity types found.</td></tr><?rdf
+END
+""" .
+
+rdfop:EntityType_typeSummary a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+@PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-typesummary'><?rdf
+SELECT ?label WHERE { ?id rdfs:label ?label }
+BEGIN
+?><span class='rdfop-typesummary__label'><?rdf PRINT HTML ?label ?></span><?rdf
+ELSE
+?><span class='rdfop-typesummary__label'></span><?rdf
+END
+SELECT ?palette WHERE { ?id rdfop:paletteVisible ?palette }
+BEGIN
+?><span class='rdfop-typesummary__palette' data-visible='<?rdf PRINT HTML ?palette ?>'></span><?rdf
+ELSE
+?><span class='rdfop-typesummary__palette' data-visible='false'></span><?rdf
+END
+?></div><?rdf
+""" .
+
+rdfop:TypeDetail_view a rdfop:EditorComponent ;
+  rdfop:css """
+.rdfop-typedetail { padding:1rem; }
+.rdfop-typedetail__grid { display:grid; gap:1rem; }
+.rdfop-typedetail__meta { color:var(--muted); font-size:.9rem; }
+.rdfop-typedetail__section h3 { margin:0 0 .75rem 0; }
+.rdfop-typedetail__actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+.rdfop-typedetail__table td,
+.rdfop-typedetail__table th { vertical-align:top; }
+.rdfop-typedetail__code { font:12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap; word-break:break-word; }
+""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+@PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+PARAMETER ?typeId "typeId"
+?><div class='rdfop-c rdfop-typedetail' data-rdfop-params='{&quot;typeId&quot;:<?rdf PRINT JSON ?typeId ?>}'>
+  <div class='rdfop-typedetail__grid'>
+    <div>
+      <h2>Type Detail</h2>
+      <div class='rdfop-typedetail__meta'><?rdf PRINT HTML ?typeId ?></div>
+    </div>
+    <div class='card pad rdfop-typedetail__section'>
+      <h3>General</h3>
+      <table class='table rdfop-typedetail__table'>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>IRI</td><td><?rdf CALL render_link(?typeId, REQ, RES) ?></td></tr>
+        <?rdf
+        SELECT ?label WHERE { ?typeId rdfs:label ?label }
+        BEGIN
+        ?><tr><td>Label</td><td><?rdf PRINT HTML ?label ?></td></tr><?rdf
+        END
+        ?>
+        <?rdf
+        SELECT ?palette WHERE { ?typeId rdfop:paletteVisible ?palette }
+        BEGIN
+        ?><tr><td>Palette visible</td><td><?rdf PRINT HTML ?palette ?></td></tr><?rdf
+        ELSE
+        ?><tr><td>Palette visible</td><td>false</td></tr><?rdf
+        END
+        ?>
+        <?rdf
+        SELECT ?recursive WHERE { ?typeId rdfop:recursiveDelete ?recursive }
+        BEGIN
+        ?><tr><td>Recursive delete</td><td><?rdf PRINT HTML ?recursive ?></td></tr><?rdf
+        END
+        ?>
+      </table>
+    </div>
+    <div class='card pad rdfop-typedetail__section'>
+      <h3>Attributes</h3>
+      <table class='table rdfop-typedetail__table'>
+        <tr><th>Attribute</th><th>Name</th><th>Type</th><th>Cardinality</th></tr>
+        <tbody class='rdfop-typedetail__attrs'><tr><td colspan='4' class='rdfop-typedetail__loading'>Loading …</td></tr></tbody>
+      </table>
+    </div>
+    <div class='card pad rdfop-typedetail__section'>
+      <h3>Methods</h3>
+      <table class='table rdfop-typedetail__table'>
+        <tr><th>Method</th><th>Binding</th><th>Actions</th></tr>
+        <tbody class='rdfop-typedetail__methods-body'><tr><td colspan='3' class='rdfop-typedetail__loading'>Loading …</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div><?rdf
+""" .
+
+rdfop:EntityType_typeAttributesRows a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+?><!----><?rdf
+SELECT ?attr WHERE { ?id rdfop:hasAttribute ?attr }
+BEGIN
+?><tr class='rdfop-typedetail__attrrow' data-attr-id='<?rdf PRINT HTML ?attr ?>'>
+  <td><?rdf CALL render_link(?attr, REQ, RES) ?></td>
+  <td class='rdfop-typedetail__attr-name'></td>
+  <td class='rdfop-typedetail__attr-type'></td>
+  <td class='rdfop-typedetail__attr-card'></td>
+</tr><?rdf
+ELSE
+?><tr><td colspan='4' class='empty'>No attributes bound on this type.</td></tr><?rdf
+END
+""" .
+
+rdfop:Attribute_attributeSummary a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-attrsummary'><?rdf
+SELECT ?name WHERE { ?id rdfop:attrName ?name }
+BEGIN
+?><span class='rdfop-attrsummary__name'><?rdf PRINT HTML ?name ?></span><?rdf
+ELSE
+?><span class='rdfop-attrsummary__name'></span><?rdf
+END
+SELECT ?attrType WHERE { ?id rdfop:attrType ?attrType }
+BEGIN
+?><span class='rdfop-attrsummary__type'><?rdf CALL render_link(?attrType, REQ, RES) ?></span><?rdf
+ELSE
+?><span class='rdfop-attrsummary__type'></span><?rdf
+END
+SELECT ?card WHERE { ?id rdfop:cardinality ?card }
+BEGIN
+?><span class='rdfop-attrsummary__card'><?rdf PRINT HTML ?card ?></span><?rdf
+ELSE
+?><span class='rdfop-attrsummary__card'></span><?rdf
+END
+?></div><?rdf
+""" .
+
+rdfop:EntityType_typeMethodsRows a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+?><!----><?rdf
+SELECT ?binding WHERE { ?id rdfop:view ?binding }
+BEGIN
+?><tr>
+  <td>view</td>
+  <td><?rdf CALL render_link(?binding, REQ, RES) ?></td>
+  <td><div class='rdfop-typedetail__actions'><a class='btn' href='/rdfop-render?comp=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23ObjectDetail_view&amp;id=<?rdf PRINT URL ?binding ?>' onclick='event.preventDefault();openOverlay(this.href)'>Binding</a></div></td>
+</tr><?rdf
+END
+SELECT ?binding WHERE { ?id rdfop:edit ?binding }
+BEGIN
+?><tr>
+  <td>edit</td>
+  <td><?rdf CALL render_link(?binding, REQ, RES) ?></td>
+  <td><div class='rdfop-typedetail__actions'><a class='btn' href='/rdfop-render?comp=https%3A%2F%2Flaunix.de%2Frdfop%2Fschema%23ObjectDetail_view&amp;id=<?rdf PRINT URL ?binding ?>' onclick='event.preventDefault();openOverlay(this.href)'>Binding</a></div></td>
+</tr><?rdf
+ELSE
+?><tr><td colspan='3' class='empty'>No public methods bound on this type.</td></tr><?rdf
+END
+""" .

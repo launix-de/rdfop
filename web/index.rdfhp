@@ -30,8 +30,8 @@ PARAMETER ?id "id"
   .max-800 { max-width: 800px; }
   /* Overlay styles */
   .overlay-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 2000; }
-  .overlay-window { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel); border-radius: 12px; box-shadow: 0 16px 48px rgba(2,6,23,.3), 0 6px 16px rgba(2,6,23,.18); width: min(92vw, 980px); max-height: 86vh; overflow: auto; z-index: 2001; }
-  .overlay-content { padding: 18px 20px; }
+  .overlay-window { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel); border-radius: 12px; box-shadow: 0 16px 48px rgba(2,6,23,.3), 0 6px 16px rgba(2,6,23,.18); width: min(96vw, 1360px); max-width: calc(100vw - 24px); max-height: 92vh; overflow: auto; z-index: 2001; }
+  .overlay-content { padding: 18px 20px 20px; }
   .overlay-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; font-size: 20px; cursor: pointer; color: #334155; }
   /* rdfop component framework (base) */
   .rdfop-c { position: relative; }
