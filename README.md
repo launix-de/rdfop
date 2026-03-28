@@ -1,3 +1,5 @@
+![RDFOP screenshot](assets/screenshot.png)
+
 # RDFOP (aka FOP II)
 
 RDFOP is a feature oriented programming framework based on RDF (resource description format). It is a *universal low code tool* which means you have a WYSIWIG editor and you can edit every aspect of the software. A software is purely described by data in RDF format.
