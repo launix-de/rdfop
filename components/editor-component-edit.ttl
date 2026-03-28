@@ -230,3 +230,27 @@ PARAMETER ?id "id"
   </div>
 </div><?rdf
 """ .
+
+################################################################
+# Tests
+################################################################
+
+rdfop:test_direct_entity_bindings_resolve_components a rdfop:PlaywrightTest ;
+  rdfs:label "Direct entity view and edit bindings resolve component renderers" ;
+  rdfop:testFor rdfop:EditorComponent ;
+  rdfop:order "20" ;
+  rdfop:playwright """
+const editorType = `${helpers.S}EditorComponent`;
+const htmlViewType = `${helpers.S}HTMLView`;
+
+const editResp = await request.get(`${baseURL}/rdfop-render?id=${encodeURIComponent(editorType)}&mode=edit`);
+expect(editResp.ok()).toBeTruthy();
+const editHtml = await editResp.text();
+expect(editHtml).toContain('Edit Component');
+expect(editHtml).not.toContain(`No component for ${editorType} mode=edit`);
+
+const viewResp = await request.get(`${baseURL}/rdfop-render?id=${encodeURIComponent(htmlViewType)}&mode=view`);
+expect(viewResp.ok()).toBeTruthy();
+const viewHtml = await viewResp.text();
+expect(viewHtml).not.toContain(`No component for ${htmlViewType} mode=view`);
+""" .

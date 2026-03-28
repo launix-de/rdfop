@@ -14,7 +14,6 @@ rdfop:SPARQLConsole_view a rdfop:EditorComponent ;
   rdfop:css """.rdfop-sparql { display:flex; flex-direction:column; height:100%; padding:1em; box-sizing:border-box; }
 .rdfop-sparql__editor { flex-shrink:0; }
 .rdfop-sparql__results { flex:1; overflow:auto; margin-top:1em; }
-.rdfop-sparql__results a { color:inherit; }
 .rdfop-sparql__error { color:#b91c1c; padding:12px; }""" ;
   rdfop:js """
 window.__rdfopSparqlLinkCache = window.__rdfopSparqlLinkCache || {};

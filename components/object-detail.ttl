@@ -10,7 +10,77 @@ rdfop:ObjectDetail a rdfop:EntityType ; rdfs:label "Object Detail" .
 rdfop:ObjectDetail rdfop:view rdfop:ObjectDetail_view .
 
 rdfop:ObjectDetail_view a rdfop:EditorComponent ;
-  rdfop:css """.rdfop-detail td { white-space: pre-wrap; word-break: break-all; }""" ;
+  rdfop:css """
+.rdfop-detail td { white-space: pre-wrap; word-break: break-all; }
+.rdfop-detail__methods { display:flex; flex-wrap:wrap; gap:.5rem; }
+.rdfop-detail__methods .btn,
+.rdfop-detail__methods .btn:visited { color:inherit; text-decoration:none; }
+.rdfop-detail__cell { display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; min-width:0; }
+.rdfop-detail__clamp { display:block; width:100%; min-width:0; overflow:hidden; max-height:4.5em; position:relative; }
+.rdfop-detail__clamp--collapsed { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; }
+.rdfop-detail__clamp--collapsed::after { content:""; position:absolute; left:0; right:0; bottom:0; height:1.4em; background:linear-gradient(to bottom, rgba(255,255,255,0), var(--panel, #fff)); pointer-events:none; }
+.rdfop-detail__clamp--expanded { display:block; max-height:none; overflow:visible; }
+.rdfop-detail__more { display:none; padding:.15rem .5rem; border:1px solid var(--ring, #cbd5e1); border-radius:999px; background:#fff; color:var(--muted, #64748b); cursor:pointer; font-size:.78rem; line-height:1.2; }
+.rdfop-detail__more:hover { background:#f8fafc; color:var(--fg, #0f172a); }
+""" ;
+  rdfop:js """
+window.rdfopDetailInit = function(root) {
+  if (!root) return;
+  if (root.dataset.detailInit === '1') return;
+  root.dataset.detailInit = '1';
+  root.querySelectorAll('.rdfop-detail__cell').forEach(function(cell) {
+    var body = cell.querySelector('.rdfop-detail__clamp');
+    var toggle = cell.querySelector('.rdfop-detail__more');
+    if (!body || !toggle) return;
+    requestAnimationFrame(function() {
+      var style = window.getComputedStyle(body);
+      var lineHeight = parseFloat(style.lineHeight || '0');
+      if (!lineHeight || Number.isNaN(lineHeight)) {
+        var fontSize = parseFloat(style.fontSize || '16');
+        lineHeight = fontSize * 1.35;
+      }
+      var collapsedHeight = lineHeight * 3 + 3;
+      var overflowing = body.scrollHeight > collapsedHeight + 2;
+      toggle.style.display = overflowing ? 'inline-block' : 'none';
+      if (!overflowing) body.classList.remove('rdfop-detail__clamp--collapsed');
+    });
+  });
+  var methods = root.querySelector('.rdfop-detail__methods');
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  if (methods && p.id) {
+    fetch('/rdfop-render?comp=' + encodeURIComponent('https://launix.de/rdfop/schema#ObjectDetail_methods') + '&id=' + encodeURIComponent(p.id))
+      .then(function(resp) { return resp.text(); })
+      .then(function(html) {
+        methods.innerHTML = html;
+        var seen = new Set();
+        methods.querySelectorAll('.rdfop-detail__method').forEach(function(node) {
+          var key = (node.dataset.method || node.textContent || '') + '|' + (node.getAttribute('href') || '');
+          if (seen.has(key)) {
+            node.remove();
+            return;
+          }
+          seen.add(key);
+        });
+        if (!methods.children.length) {
+          methods.innerHTML = '<span class="empty">No public methods.</span>';
+        }
+      })
+      .catch(function() {
+        methods.innerHTML = '<span class="empty">Could not load methods.</span>';
+      });
+  }
+};
+
+window.rdfopDetailToggle = function(btn) {
+  var cell = btn.closest('.rdfop-detail__cell');
+  if (!cell) return;
+  var body = cell.querySelector('.rdfop-detail__clamp');
+  if (!body) return;
+  var expanded = body.classList.toggle('rdfop-detail__clamp--expanded');
+  body.classList.toggle('rdfop-detail__clamp--collapsed', !expanded);
+  btn.textContent = expanded ? 'less' : '(...)';
+};
+""" ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 ?><div class='rdfop-c rdfop-detail' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
@@ -23,14 +93,18 @@ PARAMETER ?id "id"
       SELECT ?p, ?o WHERE { ?id ?p ?o }
       BEGIN
       ?><tr>
-        <td><?rdf CALL render_link(?p, REQ, RES) ?></td>
-        <td><?rdf CALL render_link(?o, REQ, RES) ?></td>
+        <td><div class='rdfop-detail__cell'><div class='rdfop-detail__clamp rdfop-detail__clamp--collapsed'><?rdf CALL render_link(?p, REQ, RES) ?></div><button class='rdfop-detail__more' onclick='rdfopDetailToggle(this)'>(...)</button></div></td>
+        <td><div class='rdfop-detail__cell'><div class='rdfop-detail__clamp rdfop-detail__clamp--collapsed'><?rdf CALL render_link(?o, REQ, RES) ?></div><button class='rdfop-detail__more' onclick='rdfopDetailToggle(this)'>(...)</button></div></td>
       </tr><?rdf
       ELSE
       ?><tr><td colspan='2' class='empty'>No properties found.</td></tr><?rdf
       END
       ?>
     </table>
+  </div>
+  <h3 class='mt-4'>Methods</h3>
+  <div class='card pad'>
+    <div class='rdfop-detail__methods'><span class='empty'>Loading …</span></div>
   </div>
   <h3 class='mt-4'>Back Edges</h3>
   <div class='card'>
@@ -40,8 +114,8 @@ PARAMETER ?id "id"
       SELECT ?s2, ?p WHERE { ?s2 ?p ?id }
       BEGIN
       ?><tr>
-        <td><?rdf CALL render_link(?p, REQ, RES) ?></td>
-        <td><?rdf CALL render_link(?s2, REQ, RES) ?></td>
+        <td><div class='rdfop-detail__cell'><div class='rdfop-detail__clamp rdfop-detail__clamp--collapsed'><?rdf CALL render_link(?p, REQ, RES) ?></div><button class='rdfop-detail__more' onclick='rdfopDetailToggle(this)'>(...)</button></div></td>
+        <td><div class='rdfop-detail__cell'><div class='rdfop-detail__clamp rdfop-detail__clamp--collapsed'><?rdf CALL render_link(?s2, REQ, RES) ?></div><button class='rdfop-detail__more' onclick='rdfopDetailToggle(this)'>(...)</button></div></td>
       </tr><?rdf
       ELSE
       ?><tr><td colspan='2' class='empty'>No back edges.</td></tr><?rdf
@@ -50,4 +124,36 @@ PARAMETER ?id "id"
     </table>
   </div>
 </div><?rdf
+""" .
+
+rdfop:ObjectDetail_methods a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-detail__methods-body'><?rdf
+SELECT ?binding WHERE { ?id rdfop:view ?binding }
+BEGIN
+?><a class='btn rdfop-detail__method' data-method='view' href='/rdfop-render?id=<?rdf PRINT URL ?id ?>&amp;mode=view' onclick='event.preventDefault();openOverlay(this.href)'>view</a><?rdf
+END
+
+SELECT ?binding WHERE { ?id rdfop:edit ?binding }
+BEGIN
+?><a class='btn rdfop-detail__method' data-method='edit' href='/rdfop-render?id=<?rdf PRINT URL ?id ?>&amp;mode=edit' onclick='event.preventDefault();openOverlay(this.href)'>edit</a><?rdf
+END
+
+SELECT ?type WHERE { ?id a ?type }
+BEGIN
+  SELECT ?binding WHERE { ?type rdfop:view ?binding }
+  BEGIN
+?><a class='btn rdfop-detail__method' data-method='view' href='/rdfop-render?id=<?rdf PRINT URL ?id ?>&amp;mode=view' onclick='event.preventDefault();openOverlay(this.href)'>view</a><?rdf
+  END
+END
+
+SELECT ?type WHERE { ?id a ?type }
+BEGIN
+  SELECT ?binding WHERE { ?type rdfop:edit ?binding }
+  BEGIN
+?><a class='btn rdfop-detail__method' data-method='edit' href='/rdfop-render?id=<?rdf PRINT URL ?id ?>&amp;mode=edit' onclick='event.preventDefault();openOverlay(this.href)'>edit</a><?rdf
+  END
+END
+?></div><?rdf
 """ .

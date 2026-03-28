@@ -352,14 +352,26 @@ END
     (set sparql_id (if (match (concat id) (regex ":" _) true false) (concat "<" id ">") id))
     (set _rc (newsession))
 
-    /* find component: ?type <mode_predicate> ?component where id a ?type */
+    /* Prefer direct bindings on the entity itself, then fall back to its type. */
     (set mode_pred (concat "<https://launix.de/rdfop/schema#" mode ">"))
     (try (lambda () (begin
         (define resultrow (lambda (row) (_rc "comp" (row "?comp"))))
         (eval (parse_sparql "rdf" (concat
-            "SELECT ?comp WHERE { " sparql_id " a ?type . ?type " mode_pred " ?comp }"
+            "SELECT ?comp WHERE { " sparql_id " " mode_pred " ?comp } LIMIT 1"
         )))
     )) (lambda (e) nil))
+    (if (nil? (_rc "comp"))
+        (begin
+            (try (lambda () (begin
+                (define resultrow (lambda (row) (_rc "comp" (row "?comp"))))
+                (eval (parse_sparql "rdf" (concat
+                    "SELECT ?comp WHERE { " sparql_id " a ?type . ?type " mode_pred " ?comp } LIMIT 1"
+                )))
+            )) (lambda (e) nil))
+            nil
+        )
+        nil
+    )
 
     (if (not (nil? (_rc "comp"))) (begin
         /* build wrapped req with id + original params */
@@ -692,9 +704,21 @@ END
     (try (lambda () (begin
         (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
         (eval (parse_sparql "rdf" (concat
-            "SELECT ?tpl WHERE { <https://launix.de/rdfop/schema#" action "> a <https://launix.de/rdfop/schema#Method> . " sparql_id " a ?type . ?type <https://launix.de/rdfop/schema#" action "> ?tpl } LIMIT 1"
+            "SELECT ?tpl WHERE { <https://launix.de/rdfop/schema#" action "> a <https://launix.de/rdfop/schema#Method> . " sparql_id " <https://launix.de/rdfop/schema#" action "> ?tpl } LIMIT 1"
         )))
     )) (lambda (e) nil))
+    (if (nil? (_rc "tpl"))
+        (begin
+            (try (lambda () (begin
+                (define resultrow (lambda (o) (_rc "tpl" (o "?tpl"))))
+                (eval (parse_sparql "rdf" (concat
+                    "SELECT ?tpl WHERE { <https://launix.de/rdfop/schema#" action "> a <https://launix.de/rdfop/schema#Method> . " sparql_id " a ?type . ?type <https://launix.de/rdfop/schema#" action "> ?tpl } LIMIT 1"
+                )))
+            )) (lambda (e) nil))
+            nil
+        )
+        nil
+    )
     (if (nil? (_rc "tpl")) false (begin
         (set _q (newsession))
         (_q "id" id)

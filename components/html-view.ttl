@@ -56,3 +56,57 @@ BEGIN
 END""" .
 
 rdfop:HTMLView rdfop:paletteVisible "true" .
+
+################################################################
+# Tests
+################################################################
+
+rdfop:test_html_view_renders_iframe_content a rdfop:PlaywrightTest ;
+  rdfs:label "HTMLView renders its HTML inside the iframe" ;
+  rdfop:testFor rdfop:HTMLView ;
+  rdfop:order "5" ;
+  rdfop:playwright """
+const id = helpers.id();
+const html = '<main data-testid="html-view-inner"><h1>Alpha</h1><p>Beta</p></main>';
+await helpers.insert(helpers.htmlView(id, html));
+try {
+  await helpers.goto(id);
+  await expect(helpers.byId(id).locator('iframe')).toHaveCount(1);
+  const frame = page.frameLocator(`[data-testid="${helpers.escapeAttr(id)}"] iframe`);
+  await expect(frame.getByTestId('html-view-inner')).toBeVisible();
+  await expect(frame.locator('h1')).toHaveText('Alpha');
+  await expect(frame.locator('p')).toHaveText('Beta');
+} finally {
+  await helpers.cleanup(id);
+}
+""" .
+
+rdfop:test_html_view_edit_persists_changes a rdfop:PlaywrightTest ;
+  rdfs:label "HTMLView edit updates the stored HTML and survives reload" ;
+  rdfop:testFor rdfop:HTMLView ;
+  rdfop:order "6" ;
+  rdfop:playwright """
+const id = helpers.id();
+const oldHtml = '<article data-testid="old-html"><h1>Old</h1></article>';
+const newHtml = '<article data-testid="new-html"><h1>New</h1><p>Saved</p></article>';
+await helpers.insert(helpers.htmlView(id, oldHtml));
+try {
+  await helpers.goto(id);
+  const root = helpers.byId(id);
+  await root.hover();
+  await root.locator('.rdfop-edit-btn').click();
+  const editor = helpers.byId(id);
+  await expect(editor.locator('textarea')).toHaveValue(oldHtml);
+  await editor.locator('textarea').fill(newHtml);
+  await editor.locator('.rdfop-edit-toolbar button').first().click();
+  const frame = page.frameLocator(`[data-testid="${helpers.escapeAttr(id)}"] iframe`);
+  await expect(frame.getByTestId('new-html')).toBeVisible();
+  await expect(frame.locator('h1')).toHaveText('New');
+  await expect(frame.locator('p')).toHaveText('Saved');
+  await page.reload();
+  await expect(frame.getByTestId('new-html')).toBeVisible();
+  await expect(frame.locator('h1')).toHaveText('New');
+} finally {
+  await helpers.cleanup(id);
+}
+""" .
