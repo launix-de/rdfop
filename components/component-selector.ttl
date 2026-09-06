@@ -329,12 +329,45 @@ BEGIN
 ELSE
 ?><div class='rdfop-c rdfop-palette' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorPaletteDrop(event,this)'>
   <button class='rdfop-palette__remove' onclick='event.preventDefault();event.stopPropagation();rdfopSelectorPaletteRemove(this)'>&#x2715;</button>
-  <?rdf SELECT ?type, ?label WHERE { ?type rdfop:paletteVisible "true" . ?type a rdfop:EntityType . ?type rdfs:label ?label }
+  <?rdf SELECT DISTINCT ?type, ?label WHERE { ?type rdfop:paletteVisible "true" . ?type a rdfop:EntityType . ?type rdfs:label ?label }
   BEGIN
   ?><div class='rdfop-palette__item' onclick='rdfopSelectorPaletteSelect(this,<?rdf PRINT JSON ?id ?>,&quot;<?rdf PRINT HTML ?type ?>&quot;)'><?rdf PRINT HTML ?label ?></div><?rdf
   END ?>
 </div><?rdf
 END""" .
+
+rdfop:test_component_selector_palette_only_lists_templates_once a rdfop:PlaywrightTest ;
+  rdfs:label "Component palette lists enabled templates once" ;
+  rdfop:testFor rdfop:ComponentSelector ;
+  rdfop:order "9" ;
+  rdfop:playwright """
+const root = helpers.id();
+const templateType = helpers.id();
+const domainType = helpers.id();
+const templateLabel = 'Template ' + crypto.randomUUID();
+const domainLabel = 'Domain ' + crypto.randomUUID();
+const templateTriples = [
+  `${helpers.sid(templateType)} a <${helpers.S}EntityType> .`,
+  `${helpers.sid(templateType)} <${helpers.S}paletteVisible> "true" .`,
+  `${helpers.sid(templateType)} <http://www.w3.org/2000/01/rdf-schema#label> ${JSON.stringify(templateLabel)} .`,
+];
+await helpers.insert([
+  `${helpers.sid(root)} a <${helpers.S}ComponentSelector> .`,
+  ...templateTriples,
+  ...templateTriples,
+  `${helpers.sid(domainType)} a <${helpers.S}EntityType> .`,
+  `${helpers.sid(domainType)} <http://www.w3.org/2000/01/rdf-schema#label> ${JSON.stringify(domainLabel)} .`,
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await expect(helpers.byId(root).locator('.rdfop-palette__item', {hasText:templateLabel})).toHaveCount(1);
+  await expect(helpers.byId(root).locator('.rdfop-palette__item', {hasText:domainLabel})).toHaveCount(0);
+} finally {
+  await helpers.cleanup(root);
+  await helpers.cleanup(templateType);
+  await helpers.cleanup(domainType);
+}
+""" .
 
 ################################################################
 # Tests
