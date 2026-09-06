@@ -606,12 +606,20 @@ await helpers.insert([
   helpers.selector(selB, leafB),
   helpers.htmlView(leafA, 'Alpha'),
   helpers.htmlView(leafB, 'Beta'),
+  helpers.sid(leafB) + ' a <' + helpers.S + 'Explorer> .',
 ].join('\n'));
 try {
   await helpers.goto(root);
   await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta']);
   await helpers.byId(group).locator('.rdfop-tabs__add').click();
   await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta', 'New Tab']);
+  const idsAfterAdd = await helpers.tabIds(group);
+  const newTab = idsAfterAdd[2];
+  await expect(helpers.panelById(newTab).locator('.rdfop-palette')).toHaveCount(1);
+  page.once('dialog', dialog => dialog.accept());
+  await helpers.tabById(newTab).locator('.rdfop-tabs__close').click();
+  await expect(helpers.tabLabels(group)).toHaveText(['Alpha', 'Beta']);
+  await expect(helpers.tabById(newTab)).toHaveCount(0);
 } finally {
   await helpers.cleanup(root);
 }

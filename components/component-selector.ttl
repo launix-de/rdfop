@@ -319,15 +319,9 @@ document.addEventListener('rdfop:layoutChildRemoved', function(e) {
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 @PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 PARAMETER ?id "id"
-SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel }
+SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel } LIMIT 1
 BEGIN
-?><?rdf SELECT ?label WHERE { ?sel a ?type . ?type rdfs:label ?label }
-BEGIN
-?><div class='rdfop-c rdfop-selector--filled' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='<?rdf PRINT HTML ?label ?>' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
-<?rdf
-ELSE
 ?><div class='rdfop-c rdfop-selector--filled' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
-<?rdf END ?>
   <a class='rdfop-selector__move' href='/view/<?rdf PRINT URL ?sel ?>' draggable='true' ondragstart='rdfopSelectorDragStart(event,this)' ondragend='rdfopSelectorDragEnd(event)' onclick='event.preventDefault()'>&#x2630;</a>
   <button class='rdfop-selector__clear' onclick='event.preventDefault();event.stopPropagation();rdfopSelectorClearSelection(this)'>&#x2715;</button>
   <?rdf CALL render_object(?sel, REQ, RES) ?>
