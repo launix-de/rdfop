@@ -492,7 +492,6 @@ END
 /* GET /rdfop-playwright-tests — exposes embedded Playwright tests from the RDF store */
 (rdfop_routes "/rdfop-query-json" (lambda (req res) (begin
     ((res "header") "Content-Type" "application/x-ndjson")
-    ((res "status") 200)
     (set q (req "query"))
     (set bodyParts (req "bodyParts"))
     (set rdfParam (_assoc_get_value q "rdf"))
@@ -504,7 +503,9 @@ END
             ((res "status") 400)
             ((res "print") "Parser error")
         )
-        (try
+        (begin
+          ((res "status") 200)
+          (try
             (lambda () (begin
                 (define resultrow (res "jsonl"))
                 (eval formula)
@@ -513,6 +514,7 @@ END
                 ((res "status") 400)
                 ((res "print") (htmlentities e))
             ))
+          )
         )
     )
 )))
