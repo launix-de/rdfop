@@ -38,12 +38,13 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 /* startup cleanup: schema triples persist in the DB across restarts, so clear them
    before reloading the current component set */
 (define _clear_schema_triples (lambda () (begin
-    (scan "rdf" "rdf"
+    (scan nil (table "rdf" "rdf")
+        '(369435906932736)
+        '()
         '("s")
         (lambda (s) (regexp_test s "^https://launix.de/rdfop/schema#"))
         '("$update")
-        (lambda ($update) ($update))
-        (lambda (a b) b)
+        (lambda (acc $update) (begin ($update) acc))
         nil
     )
 )))
@@ -93,26 +94,28 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     (try (lambda () (begin (load_ttl "rdf" content) (_schema_old "ttl" content) (print schema_file " reloaded")))
          (lambda (e) (print schema_file " load error: " e)))
     /* scan for rdfop:include triples and deploy watchers */
-    (scan "rdf" "rdf" '("p" "o") (lambda (p o) (equal? p "https://launix.de/rdfop/schema#include")) '("o") (lambda (o) (_deploy_include_watcher o)) (lambda (a b) b) nil)
+    (scan nil (table "rdf" "rdf") '(369435906932736) '()
+        '("p" "o") (lambda (p o) (equal? p "https://launix.de/rdfop/schema#include"))
+        '("o") (lambda (acc o) (begin (_deploy_include_watcher o) acc)) nil)
 )))
 
 /* triggers: manage include watchers at runtime */
 (droptrigger "rdf" "rdfop_include_insert" true)
-(createtrigger "rdf" "rdf" "rdfop_include_insert" "after_insert" "" (lambda (old new)
+(createtrigger (table "rdf" "rdf") "rdfop_include_insert" "after_insert" "" "" (lambda (old new)
     (if (equal? (new "p") "https://launix.de/rdfop/schema#include")
         (_deploy_include_watcher (new "o"))
     )
 ) false)
 
 (droptrigger "rdf" "rdfop_include_delete" true)
-(createtrigger "rdf" "rdf" "rdfop_include_delete" "after_delete" "" (lambda (old new)
+(createtrigger (table "rdf" "rdf") "rdfop_include_delete" "after_delete" "" "" (lambda (old new)
     (if (equal? (old "p") "https://launix.de/rdfop/schema#include")
         (_remove_include (old "o"))
     )
 ) false)
 
 (droptrigger "rdf" "rdfop_include_update" true)
-(createtrigger "rdf" "rdf" "rdfop_include_update" "after_update" "" (lambda (old new)
+(createtrigger (table "rdf" "rdf") "rdfop_include_update" "after_update" "" "" (lambda (old new)
     (begin
         (if (equal? (old "p") "https://launix.de/rdfop/schema#include")
             (_remove_include (old "o"))
@@ -238,7 +241,9 @@ END
    inside <style>/<script> blocks. */
 (define _emit_component_asset (lambda (predicate req res) (begin
     (set print (res "print"))
-    (scan "rdf" "rdf"
+    (scan nil (table "rdf" "rdf")
+        '(369435906932736)
+        '()
         '("p" "o")
         (lambda (p o)
             (and
@@ -248,11 +253,11 @@ END
             )
         )
         '("o")
-        (lambda (o) (begin
+        (lambda (acc o) (begin
             (print o)
             (print "\n")
+            acc
         ))
-        (lambda (a b) b)
         nil
     )
 )))
@@ -686,9 +691,13 @@ END
             )) (lambda (e) nil))
             (map (_ch "children") (lambda (child) ((_del "delete_node") child)))
             /* delete all triples where this node is subject */
-            (scan "rdf" "rdf" '("s") (lambda (s) (equal? s id)) '("$update") (lambda ($update) ($update)) (lambda (a b) b) nil)
+            (scan nil (table "rdf" "rdf") '(369435906932736) '()
+                '("s") (lambda (s) (equal? s id))
+                '("$update") (lambda (acc $update) (begin ($update) acc)) nil)
             /* delete parent's children link to this node */
-            (scan "rdf" "rdf" '("p" "o") (lambda (p o) (and (equal? p "https://launix.de/rdfop/schema#children") (equal? o id))) '("$update") (lambda ($update) ($update)) (lambda (a b) b) nil)
+            (scan nil (table "rdf" "rdf") '(369435906932736) '()
+                '("p" "o") (lambda (p o) (and (equal? p "https://launix.de/rdfop/schema#children") (equal? o id)))
+                '("$update") (lambda (acc $update) (begin ($update) acc)) nil)
         )))
         ((_del "delete_node") node_id)
         ((res "status") 200)

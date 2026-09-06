@@ -65,7 +65,12 @@ Copyright (C) 2024  Carl-Philip Hänsch
 				(define _resolve (lambda (expr) (begin (set r (rdf_replace_ctx expr context)) (if (list? r) (eval r) r))))
 				(set del_code (map triples (lambda (triple) (match triple '(s p o) (begin
 					(set rs (_resolve s)) (set rp (_resolve p)) (set ro (_resolve o))
-					'('scan schema "rdf" '('list "s" "p" "o") '('lambda '('_s '_p '_o) '('and '('equal? '_s rs) '('equal? '_p rp) '('equal? '_o ro))) '('list "$update") '('lambda '('$update) '('$update)) '('lambda '('a 'b) 'b) nil))
+					'('scan nil '('table schema "rdf") '('list) '('list)
+						'('list "s" "p" "o")
+						'('lambda '('_s '_p '_o) '('and '('equal? '_s rs) '('equal? '_p rp) '('equal? '_o ro)))
+						'('list "$update")
+						'('lambda '('acc '$update) '('begin '('$update) 'acc))
+						nil))
 				))))
 				(set _rest (compile rest context))
 				(cons '!begin (merge del_code (if (nil? _rest) '() (list _rest)))))
