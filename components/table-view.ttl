@@ -132,7 +132,7 @@ window.rdfopTableOpenInTabs = async function(targetId, resource, action, label) 
     rdfopSid(viewId) + ' a <' + S + 'OpenView> .',
     rdfopSid(viewId) + ' <' + S + 'openResource> ' + item + ' .',
     rdfopSid(viewId) + ' <' + S + 'openAction> ' + actionRef + ' .'
-  ].join('\\n');
+  ].join('\n');
   await rdfopSave(null, ttl);
 
   var group = document.querySelector('[data-testid="' + CSS.escape(targetId) + '"]');
@@ -412,7 +412,7 @@ window.rdfopTableEditSave = async function(btn) {
       if (newValue) inserts.push(rdfopSid(id) + ' <' + field[1] + '> ' + newObject + ' .');
     });
   });
-  await rdfopSave(deletes.join('\\n') || null, inserts.join('\\n') || null);
+  await rdfopSave(deletes.join('\n') || null, inserts.join('\n') || null);
   await rdfopSwap(root, 'view');
 };
 """ ;
@@ -658,6 +658,7 @@ try {
   await row.click();
   await expect(helpers.tabLabels(group)).toHaveCount(2);
   const caseTab = helpers.byId(group).locator('.rdfop-tabs__tab', {hasText:'Case A'});
+  await caseTab.hover();
   page.once('dialog', dialog => dialog.accept());
   await caseTab.locator('.rdfop-tabs__close').click();
   await expect(helpers.byId(table).locator('.rdfop-tableview__row')).toHaveCount(1);

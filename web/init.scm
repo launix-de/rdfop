@@ -49,6 +49,22 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     )
 )))
 
+/* memcp's current delete_ttl helper emits scan_boundary calls that are not
+   available in every RDF runtime build. Keep RDFOP deletes functional with a
+   full table scan until the shared RDF planner provides that primitive. */
+(define _rdfop_delete_ttl (lambda (schema ttl) (begin
+    (set triples (parse_ttl_triples schema ttl))
+    (map triples (lambda (triple) (match triple '(subj pred obj)
+        (scan nil (table schema "rdf") '(369435906932736) '()
+            '("s" "p" "o")
+            (lambda (s p o) (and (equal? s subj) (equal? p pred) (equal? o obj)))
+            '("$update")
+            (lambda (acc $update) (begin ($update) acc))
+            nil)
+    )))
+    nil
+)))
+
 /* deploy a file watcher: watch file, on change delete old triples + insert new */
 (define _deploy_include_watcher (lambda (filename) (begin
     (set filepath (path _schema_dir filename))
@@ -58,7 +74,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
             (_include_unwatch filename (watch filepath (lambda (content) (begin
                 (set old (_include_watchers filename))
                 (if (and (not (nil? old)) (not (equal? old "")))
-                    (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "include delete error (" filename "): " e)))
+                    (try (lambda () (_rdfop_delete_ttl "rdf" old)) (lambda (e) (print "include delete error (" filename "): " e)))
                 )
                 (try (lambda () (begin (load_ttl "rdf" content) (_include_watchers filename content) (print filename " reloaded")))
                      (lambda (e) (print filename " load error: " e)))
@@ -76,7 +92,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
     )
     (set old (_include_watchers filename))
     (if (and (not (nil? old)) (not (equal? old "")))
-        (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "include remove error (" filename "): " e)))
+        (try (lambda () (_rdfop_delete_ttl "rdf" old)) (lambda (e) (print "include remove error (" filename "): " e)))
     )
     (_include_watchers filename nil)
     (_include_unwatch filename nil)
@@ -85,11 +101,17 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 
 /* load the main schema file (components.ttl) with watch + hot-reload */
 (set _schema_old (newsession))
+/* Persist multiline triggers across restarts. Remove the previous generation
+   before deleting schema triples so include-delete callbacks cannot recurse
+   into the cleanup scan. */
+(droptrigger "rdf" "rdfop_include_insert" true)
+(droptrigger "rdf" "rdfop_include_delete" true)
+(droptrigger "rdf" "rdfop_include_update" true)
 (_clear_schema_triples)
 (watch schema_file (lambda (content) (begin
     (set old (_schema_old "ttl"))
     (if (not (nil? old))
-        (try (lambda () (delete_ttl "rdf" old)) (lambda (e) (print "schema delete error: " e)))
+        (try (lambda () (_rdfop_delete_ttl "rdf" old)) (lambda (e) (print "schema delete error: " e)))
     )
     (try (lambda () (begin (load_ttl "rdf" content) (_schema_old "ttl" content) (print schema_file " reloaded")))
          (lambda (e) (print schema_file " load error: " e)))
@@ -306,7 +328,7 @@ END
         (set ins_ttl (concat ins_ttl sid " <https://launix.de/rdfop/schema#selectedNode> " (_rdf_ref next_id) " .\n"))
         (set ins_ttl (concat ins_ttl sid " <https://launix.de/rdfop/schema#children> " (_rdf_ref next_id) " .\n"))
     ))
-    (if (not (equal? del_ttl "")) (delete_ttl "rdf" del_ttl))
+    (if (not (equal? del_ttl "")) (_rdfop_delete_ttl "rdf" del_ttl))
     (if (not (equal? ins_ttl "")) (load_ttl "rdf" ins_ttl))
 )))
 
@@ -691,16 +713,32 @@ END
     )))
     (set del_ttl (bp "delete"))
     (set ins_ttl (bp "insert"))
+    (set _save_state (newsession))
+    (_save_state "ok" true)
+    (_save_state "error" "")
     /* DELETE triples */
     (if (and (not (nil? del_ttl)) (not (equal? del_ttl "")))
-        (try (lambda () (delete_ttl "rdf" del_ttl)) (lambda (e) (print "delete_ttl error: " e)))
+        (try (lambda () (_rdfop_delete_ttl "rdf" del_ttl)) (lambda (e) (begin
+            (_save_state "ok" false)
+            (_save_state "error" (concat e))
+            (print "rdfop delete error: " e)
+        )))
     )
-    /* INSERT triples */
-    (if (and (not (nil? ins_ttl)) (not (equal? ins_ttl "")))
-        (try (lambda () (load_ttl "rdf" ins_ttl)) (lambda (e) (print "load_ttl error: " e)))
+    /* INSERT triples only after a successful delete. */
+    (if (and (_save_state "ok") (not (nil? ins_ttl)) (not (equal? ins_ttl "")))
+        (try (lambda () (load_ttl "rdf" ins_ttl)) (lambda (e) (begin
+            (_save_state "ok" false)
+            (_save_state "error" (concat e))
+            (print "rdfop insert error: " e)
+        )))
     )
-    ((res "status") 200)
-    ((res "print") "ok")
+    (if (_save_state "ok") (begin
+        ((res "status") 200)
+        ((res "print") "ok")
+    ) (begin
+        ((res "status") 500)
+        ((res "print") (concat "error: " (_save_state "error")))
+    ))
 )))
 
 /* POST /rdfop-delete — deletes a node and its children recursively */
