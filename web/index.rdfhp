@@ -131,11 +131,16 @@ PARAMETER ?id "id"
         if (window.rdfopTabsInit) rdfopTabsInit(root);
       };
 
+      function focusOverlayContent(content, fallback) {
+        const autofocus = content && content.querySelector('[autofocus]');
+        (autofocus || fallback).focus();
+      }
+
       function openOverlayHTML(html){
         const { content, closeBtn } = buildOverlaySkeleton();
         content.innerHTML = html;
         window.rdfopMountNode(content);
-        closeBtn.focus();
+        focusOverlayContent(content, closeBtn);
       }
       window.openOverlayHTML = openOverlayHTML;
 
@@ -173,7 +178,7 @@ PARAMETER ?id "id"
         } catch (e) {
           target.content.innerHTML = '<div style=\"color:#b91c1c\">Request failed.</div>';
         }
-        if (target.closeBtn) target.closeBtn.focus();
+        if (target.closeBtn) focusOverlayContent(target.content, target.closeBtn);
       }
       window.overlayFetch = overlayFetch;
 
