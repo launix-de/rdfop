@@ -9,6 +9,7 @@
 # --- Tab ---
 rdfop:Tab a rdfop:EntityType .
 rdfop:tabLabel a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
+rdfop:pinned a rdf:Property ; rdfs:domain rdfop:Tab ; rdfs:range rdfs:Literal .
 rdfop:Tab rdfop:onChildRemoved """
 PARAMETER ?removedChild "child"
 SELECT ?gone WHERE { ?id rdfop:children ?removedChild }
@@ -556,12 +557,16 @@ BEGIN
     BEGIN
     ?><a class='rdfop-tabs__tab' data-testid='tab:<?rdf PRINT HTML ?tab ?>' href='/view/<?rdf PRINT URL ?selected ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?selected ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
+      <?rdf SELECT ?isPinned WHERE { ?tab rdfop:pinned "true" } LIMIT 1 BEGIN ELSE ?>
       <span class='rdfop-tabs__close' onclick='event.preventDefault();event.stopPropagation();rdfopTabClose(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</span>
+      <?rdf END ?>
     </a><?rdf
     ELSE
     ?><a class='rdfop-tabs__tab' data-testid='tab:<?rdf PRINT HTML ?tab ?>' href='/view/<?rdf PRINT URL ?child ?>' data-tab-id='<?rdf PRINT HTML ?tab ?>' data-tab-order='<?rdf PRINT HTML ?ord ?>' data-child-id='<?rdf PRINT HTML ?child ?>' data-content-id='<?rdf PRINT HTML ?child ?>' draggable='true' ondragstart='rdfopTabsReorderStart(event)' ondragover='rdfopTabsReorderOver(event)' ondragleave='rdfopTabsReorderLeave(event)' ondrop='rdfopTabsReorderDrop(event)' ondragend='rdfopTabsReorderEnd(event)' onclick='event.preventDefault();rdfopTabsSwitch(this)'>
       <span class='rdfop-c rdfop-textedit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?tab ?>,&quot;p&quot;:&quot;https://launix.de/rdfop/schema#tabLabel&quot;}' ondblclick='event.stopPropagation();rdfopSwap(this,&quot;edit&quot;)'><?rdf PRINT HTML ?label ?></span>
+      <?rdf SELECT ?isPinned WHERE { ?tab rdfop:pinned "true" } LIMIT 1 BEGIN ELSE ?>
       <span class='rdfop-tabs__close' onclick='event.preventDefault();event.stopPropagation();rdfopTabClose(this.closest(&quot;.rdfop-tabs__tab&quot;))'>&#x2715;</span>
+      <?rdf END ?>
     </a><?rdf
     END ?><?rdf
     END

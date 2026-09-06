@@ -1,0 +1,580 @@
+@prefix rdfop: <https://launix.de/rdfop/schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+################################################################
+# Configurable table view
+################################################################
+
+rdfop:TableView a rdfop:EntityType ;
+  rdfs:label "Table View" ;
+  rdfop:paletteVisible "true" ;
+  rdfop:view rdfop:TableView_view ;
+  rdfop:edit rdfop:TableView_edit ;
+  rdfop:initTemplate """$ID <https://launix.de/rdfop/schema#openTarget> <https://launix.de/rdfop/schema#OverlayTarget> .
+$ID <https://launix.de/rdfop/schema#openAction> <https://launix.de/rdfop/schema#view> .
+""" .
+
+rdfop:TableColumn a rdfop:EntityType ; rdfs:label "Table Column" .
+rdfop:OpenView a rdfop:EntityType ;
+  rdfs:label "Open View" ;
+  rdfop:view rdfop:OpenView_view .
+
+rdfop:OverlayTarget a rdf:Resource ; rdfs:label "New overlay" .
+
+rdfop:itemType a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdfop:EntityType .
+rdfop:columnProperty a rdf:Property ; rdfs:domain rdfop:TableColumn ; rdfs:range rdf:Property .
+rdfop:columnLabel a rdf:Property ; rdfs:domain rdfop:TableColumn ; rdfs:range rdfs:Literal .
+rdfop:openTarget a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdf:Resource .
+rdfop:openAction a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdfop:Method .
+rdfop:openResource a rdf:Property ; rdfs:range rdf:Resource .
+
+rdfop:TableView_view a rdfop:EditorComponent ;
+  rdfop:css """
+.rdfop-tableview { display:flex; flex-direction:column; min-width:0; min-height:0; height:100%; padding:1rem; box-sizing:border-box; }
+.rdfop-tableview__head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.75rem; }
+.rdfop-tableview__head h2 { margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rdfop-tableview__scroll { min-height:0; overflow:auto; border:1px solid var(--ring); border-radius:.65rem; background:var(--panel); }
+.rdfop-tableview__table { width:100%; border-collapse:collapse; }
+.rdfop-tableview__table th { position:sticky; top:0; z-index:1; background:var(--panel); text-align:left; }
+.rdfop-tableview__table th, .rdfop-tableview__table td { padding:.6rem .75rem; border-bottom:1px solid var(--ring); vertical-align:top; }
+.rdfop-tableview__row { cursor:pointer; }
+.rdfop-tableview__row:hover, .rdfop-tableview__row:focus { background:#f1f5f9; outline:none; }
+.rdfop-tableview__value + .rdfop-tableview__value::before { content:', '; }
+.rdfop-tableview__empty { padding:1rem; color:var(--muted); }
+.rdfop-tableedit { padding:1rem; display:flex; flex-direction:column; gap:1rem; min-width:min(44rem, 100%); box-sizing:border-box; }
+.rdfop-tableedit__grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.85rem; }
+.rdfop-tableedit label { display:flex; flex-direction:column; gap:.3rem; color:var(--muted); font-size:.88rem; }
+.rdfop-tableedit input, .rdfop-tableedit select { width:100%; box-sizing:border-box; padding:.55rem .65rem; border:1px solid var(--ring); border-radius:.45rem; background:var(--panel); color:var(--text); font:inherit; }
+.rdfop-tableedit__columns { display:flex; flex-direction:column; gap:.5rem; }
+.rdfop-tableedit__column { display:grid; grid-template-columns:minmax(12rem, 1fr) minmax(10rem, .7fr) auto; gap:.5rem; align-items:end; }
+.rdfop-tableedit__actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+.rdfop-tableedit__status { min-height:1.2em; color:var(--muted); font-size:.85rem; }
+.rdfop-openview { min-height:0; height:100%; display:flex; flex-direction:column; }
+.rdfop-openview > .rdfop-c { flex:1; min-height:0; }
+@media (max-width:720px) {
+  .rdfop-tableedit__grid, .rdfop-tableedit__column { grid-template-columns:1fr; }
+}
+""" ;
+  rdfop:js """
+window.rdfopTableUniqueRows = function(rows, keys) {
+  var seen = new Set();
+  return (rows || []).filter(function(row) {
+    var key = keys.map(function(k) { return row[k] || ''; }).join('\\u0000');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+window.rdfopTableActionName = function(action) {
+  var value = String(action || 'https://launix.de/rdfop/schema#view');
+  var hash = value.lastIndexOf('#');
+  var slash = value.lastIndexOf('/');
+  return value.slice(Math.max(hash, slash) + 1) || 'view';
+};
+
+window.rdfopTableRenderUrl = function(resource, action) {
+  var name = rdfopTableActionName(action);
+  if (name === 'view' || name === 'edit') {
+    return '/rdfop-render?id=' + encodeURIComponent(resource) + '&mode=' + encodeURIComponent(name);
+  }
+  return '/' + encodeURIComponent(name) + '/' + encodeURIComponent(resource);
+};
+
+window.rdfopTableActivateTab = function(targetId, tabId) {
+  var group = document.querySelector('[data-testid="' + CSS.escape(targetId) + '"]');
+  var tab = group && group.querySelector('.rdfop-tabs__tab[data-tab-id="' + CSS.escape(tabId) + '"]');
+  if (tab) rdfopTabsSwitch(tab);
+};
+
+window.rdfopTableOpenInTabs = async function(targetId, resource, action, label) {
+  var S = 'https://launix.de/rdfop/schema#';
+  var target = rdfopSid(targetId);
+  var item = rdfopSid(resource);
+  var actionRef = rdfopSid(action);
+  var rows = await _rdfopQuery(
+    'SELECT ?tab WHERE { ' + target + ' <' + S + 'children> ?tab . ' +
+    '?tab <' + S + 'openResource> ' + item + ' . ' +
+    '?tab <' + S + 'openAction> ' + actionRef + ' } LIMIT 1'
+  );
+  if (rows.length && rows[0]['?tab']) {
+    var existing = rows[0]['?tab'];
+    rdfopTableActivateTab(targetId, existing);
+    return existing;
+  }
+
+  var tabId = 'urn:uuid:' + crypto.randomUUID();
+  var selectorId = 'urn:uuid:' + crypto.randomUUID();
+  var viewId = 'urn:uuid:' + crypto.randomUUID();
+  var order = String(Date.now());
+  var ttl = [
+    target + ' <' + S + 'children> ' + rdfopSid(tabId) + ' .',
+    rdfopSid(tabId) + ' a <' + S + 'Tab> .',
+    rdfopSid(tabId) + ' <' + S + 'tabLabel> ' + JSON.stringify(label || resource) + ' .',
+    rdfopSid(tabId) + ' <' + S + 'order> ' + JSON.stringify(order) + ' .',
+    rdfopSid(tabId) + ' <' + S + 'children> ' + rdfopSid(selectorId) + ' .',
+    rdfopSid(tabId) + ' <' + S + 'openResource> ' + item + ' .',
+    rdfopSid(tabId) + ' <' + S + 'openAction> ' + actionRef + ' .',
+    rdfopSid(selectorId) + ' a <' + S + 'ComponentSelector> .',
+    rdfopSid(selectorId) + ' <' + S + 'children> ' + rdfopSid(viewId) + ' .',
+    rdfopSid(selectorId) + ' <' + S + 'selectedNode> ' + rdfopSid(viewId) + ' .',
+    rdfopSid(viewId) + ' a <' + S + 'OpenView> .',
+    rdfopSid(viewId) + ' <' + S + 'openResource> ' + item + ' .',
+    rdfopSid(viewId) + ' <' + S + 'openAction> ' + actionRef + ' .'
+  ].join('\\n');
+  await rdfopSave(null, ttl);
+
+  var group = document.querySelector('[data-testid="' + CSS.escape(targetId) + '"]');
+  if (group) await rdfopSwap(group, 'view');
+  else await rdfopRefreshCanvas();
+  setTimeout(function() { rdfopTableActivateTab(targetId, tabId); }, 0);
+  return tabId;
+};
+
+window.rdfopTableOpenRow = async function(row) {
+  var table = row.closest('.rdfop-tableview');
+  if (!table) return;
+  var p = JSON.parse(table.dataset.rdfopParams || '{}');
+  var resource = row.dataset.resource;
+  var action = table.dataset.openAction || 'https://launix.de/rdfop/schema#view';
+  var target = table.dataset.openTarget || 'https://launix.de/rdfop/schema#OverlayTarget';
+  if (!resource) return;
+  if (target === 'https://launix.de/rdfop/schema#OverlayTarget') {
+    openOverlay(rdfopTableRenderUrl(resource, action));
+    return;
+  }
+  var firstCell = row.querySelector('td');
+  var label = row.dataset.label || (firstCell && firstCell.textContent.trim()) || resource;
+  await rdfopTableOpenInTabs(target, resource, action, label);
+};
+
+window.rdfopTableRowKey = function(event, row) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    rdfopTableOpenRow(row);
+  }
+};
+
+window.rdfopOpenViewInit = async function(root) {
+  if (!root || root.dataset.openInit === '1') return;
+  root.dataset.openInit = '1';
+  var resource = root.dataset.resource;
+  var action = root.dataset.action;
+  if (!resource) return;
+  try {
+    var resp = await fetch(rdfopTableRenderUrl(resource, action));
+    if (!resp.ok) throw new Error(await resp.text());
+    var html = await resp.text();
+    var tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    root.replaceChildren(tpl.content);
+    rdfopMountNode(root);
+  } catch (e) {
+    root.textContent = 'Could not open resource: ' + e.message;
+    root.classList.add('error');
+  }
+};
+
+window.rdfopTableEditLoad = async function(root) {
+  if (!root || root.dataset.editInit === '1') return;
+  root.dataset.editInit = '1';
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  var typeSelect = root.querySelector('[data-field=itemType]');
+  var targetSelect = root.querySelector('[data-field=openTarget]');
+  var typeRows = rdfopTableUniqueRows(await _rdfopQuery(
+    'SELECT ?type, ?label WHERE { ?type a <https://launix.de/rdfop/schema#EntityType> . ' +
+    '?type <http://www.w3.org/2000/01/rdf-schema#label> ?label }'
+  ), ['?type']);
+  typeRows.sort(function(a, b) { return String(a['?label']).localeCompare(String(b['?label'])); });
+  typeRows.forEach(function(row) {
+    var option = new Option(row['?label'] || row['?type'], row['?type']);
+    typeSelect.add(option);
+  });
+  typeSelect.value = typeSelect.dataset.value || '';
+
+  var targetRows = rdfopTableUniqueRows(await _rdfopQuery(
+    'SELECT ?target WHERE { ?target a <https://launix.de/rdfop/schema#TabGroup> }'
+  ), ['?target']);
+  targetRows.forEach(function(row) {
+    var id = row['?target'];
+    targetSelect.add(new Option('Tab group · ' + id, id));
+  });
+  targetSelect.value = targetSelect.dataset.value || 'https://launix.de/rdfop/schema#OverlayTarget';
+  await rdfopTableEditLoadProperties(root);
+};
+
+window.rdfopTableEditLoadProperties = async function(root) {
+  var typeSelect = root.querySelector('[data-field=itemType]');
+  var typeId = typeSelect && typeSelect.value;
+  var rows = [];
+  if (typeId) {
+    var domains = [typeId];
+    for (var cursor = 0; cursor < domains.length && cursor < 32; cursor++) {
+      var parents = await _rdfopQuery(
+        'SELECT ?parent WHERE { ' + rdfopSid(domains[cursor]) +
+        ' <http://www.w3.org/2000/01/rdf-schema#subClassOf> ?parent }'
+      );
+      parents.forEach(function(parent) {
+        var value = parent['?parent'];
+        if (value && !domains.includes(value)) domains.push(value);
+      });
+    }
+    for (var i = 0; i < domains.length; i++) {
+      rows = rows.concat(await _rdfopQuery(
+        'SELECT ?property, ?label WHERE { ?property a <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> . ' +
+        '?property <http://www.w3.org/2000/01/rdf-schema#domain> ' + rdfopSid(domains[i]) + ' . ' +
+        '?property <http://www.w3.org/2000/01/rdf-schema#label> ?label }'
+      ));
+    }
+    rows = rdfopTableUniqueRows(rows, ['?property']);
+  }
+  rows.sort(function(a, b) { return String(a['?label']).localeCompare(String(b['?label'])); });
+  root.querySelectorAll('[data-column-property]').forEach(function(select) {
+    var current = select.dataset.value || select.value || '';
+    select.replaceChildren(new Option('Choose property …', ''));
+    rows.forEach(function(row) {
+      select.add(new Option(row['?label'] || row['?property'], row['?property']));
+    });
+    if (current && !rows.some(function(row) { return row['?property'] === current; })) {
+      select.add(new Option(current, current));
+    }
+    select.value = current;
+  });
+};
+
+window.rdfopTableEditAddColumn = async function(btn) {
+  var root = btn.closest('.rdfop-tableedit');
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  var resp = await fetch('/rdfop-create', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'parent=' + encodeURIComponent(p.id) + '&type=' + encodeURIComponent('https://launix.de/rdfop/schema#TableColumn')
+  });
+  if (!resp.ok) return;
+  await rdfopSwap(root, 'edit');
+};
+
+window.rdfopTableEditRemoveColumn = async function(btn) {
+  var row = btn.closest('[data-column-id]');
+  if (!row) return;
+  await fetch('/rdfop-delete', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'id=' + encodeURIComponent(row.dataset.columnId)
+  });
+  row.remove();
+};
+
+window.rdfopTableEditSave = async function(btn) {
+  var root = btn.closest('.rdfop-tableedit');
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  if (!p.id) return;
+  var deletes = [];
+  var inserts = [];
+  function resourceField(field, predicate) {
+    var el = root.querySelector('[data-field=' + field + ']');
+    var oldValue = el.dataset.value || '';
+    var newValue = el.value || '';
+    if (oldValue === newValue) return;
+    if (oldValue) deletes.push(rdfopSid(p.id) + ' <' + predicate + '> ' + rdfopSid(oldValue) + ' .');
+    if (newValue) inserts.push(rdfopSid(p.id) + ' <' + predicate + '> ' + rdfopSid(newValue) + ' .');
+  }
+  resourceField('itemType', 'https://launix.de/rdfop/schema#itemType');
+  resourceField('openTarget', 'https://launix.de/rdfop/schema#openTarget');
+  resourceField('openAction', 'https://launix.de/rdfop/schema#openAction');
+
+  var label = root.querySelector('[data-field=label]');
+  var oldLabel = label.dataset.value || '';
+  var newLabel = label.value || '';
+  if (oldLabel !== newLabel) {
+    if (oldLabel) deletes.push(rdfopSid(p.id) + ' <http://www.w3.org/2000/01/rdf-schema#label> ' + JSON.stringify(oldLabel) + ' .');
+    if (newLabel) inserts.push(rdfopSid(p.id) + ' <http://www.w3.org/2000/01/rdf-schema#label> ' + JSON.stringify(newLabel) + ' .');
+  }
+
+  root.querySelectorAll('[data-column-id]').forEach(function(row) {
+    var id = row.dataset.columnId;
+    var property = row.querySelector('[data-column-property]');
+    var columnLabel = row.querySelector('[data-column-label]');
+    var oldProperty = property.dataset.value || '';
+    var newProperty = property.value || '';
+    var oldColumnLabel = columnLabel.dataset.value || '';
+    var newColumnLabel = columnLabel.value || '';
+    if (oldProperty !== newProperty) {
+      if (oldProperty) deletes.push(rdfopSid(id) + ' <https://launix.de/rdfop/schema#columnProperty> ' + rdfopSid(oldProperty) + ' .');
+      if (newProperty) inserts.push(rdfopSid(id) + ' <https://launix.de/rdfop/schema#columnProperty> ' + rdfopSid(newProperty) + ' .');
+    }
+    if (oldColumnLabel !== newColumnLabel) {
+      if (oldColumnLabel) deletes.push(rdfopSid(id) + ' <https://launix.de/rdfop/schema#columnLabel> ' + JSON.stringify(oldColumnLabel) + ' .');
+      if (newColumnLabel) inserts.push(rdfopSid(id) + ' <https://launix.de/rdfop/schema#columnLabel> ' + JSON.stringify(newColumnLabel) + ' .');
+    }
+  });
+  await rdfopSave(deletes.join('\\n') || null, inserts.join('\\n') || null);
+  await rdfopSwap(root, 'view');
+};
+""" ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+@PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+PARAMETER ?id "id"
+SELECT ?itemType WHERE { ?id rdfop:itemType ?itemType } LIMIT 1
+BEGIN
+?><div class='rdfop-c rdfop-tableview' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' <?rdf
+SELECT ?target WHERE { ?id rdfop:openTarget ?target } LIMIT 1
+BEGIN ?>data-open-target='<?rdf PRINT HTML ?target ?>'<?rdf END ?> <?rdf
+SELECT ?action WHERE { ?id rdfop:openAction ?action } LIMIT 1
+BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?>>
+  <div class='rdfop-tableview__head'>
+    <h2><?rdf SELECT ?label WHERE { ?id rdfs:label ?label } LIMIT 1
+    BEGIN ?><?rdf PRINT HTML ?label ?><?rdf
+    ELSE ?>Table<?rdf END ?></h2>
+    <button class='btn' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>Configure</button>
+  </div>
+  <div class='rdfop-tableview__scroll'>
+    <table class='rdfop-tableview__table'>
+      <thead><tr><?rdf
+      SELECT ?column, ?order WHERE { ?column rdfop:order ?order . ?id rdfop:children ?column . ?column a rdfop:TableColumn } ORDER BY ?order
+      BEGIN
+        SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1
+        BEGIN
+          ?><th><?rdf
+          SELECT ?columnLabel WHERE { ?column rdfop:columnLabel ?columnLabel } LIMIT 1
+          BEGIN ?><?rdf PRINT HTML ?columnLabel ?><?rdf
+          ELSE
+            SELECT ?propertyLabel WHERE { ?property rdfs:label ?propertyLabel } LIMIT 1
+            BEGIN ?><?rdf PRINT HTML ?propertyLabel ?><?rdf ELSE ?><?rdf PRINT HTML ?property ?><?rdf END
+          END ?></th><?rdf
+        END
+      END
+      ?></tr></thead>
+      <tbody><?rdf
+      SELECT DISTINCT ?row WHERE { ?row a ?itemType } ORDER BY ?row
+      BEGIN
+        ?><tr class='rdfop-tableview__row' tabindex='0' data-resource='<?rdf PRINT HTML ?row ?>' onclick='if(!event.target.closest(&quot;a,button,input,select&quot;))rdfopTableOpenRow(this)' onkeydown='rdfopTableRowKey(event,this)'><?rdf
+        SELECT ?column, ?order WHERE { ?column rdfop:order ?order . ?id rdfop:children ?column . ?column a rdfop:TableColumn } ORDER BY ?order
+        BEGIN
+          SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1
+          BEGIN
+            ?><td><?rdf SELECT DISTINCT ?value WHERE { ?row ?property ?value }
+            BEGIN ?><span class='rdfop-tableview__value'><?rdf CALL render_link(?value, REQ, RES) ?></span><?rdf
+            ELSE ?>&nbsp;<?rdf END ?></td><?rdf
+          END
+        END
+        ?></tr><?rdf
+      ELSE
+        ?><tr><td class='rdfop-tableview__empty'>No rows.</td></tr><?rdf
+      END
+      ?></tbody>
+    </table>
+  </div>
+</div><?rdf
+ELSE
+?><div class='rdfop-c rdfop-tableview rdfop-tableview__empty' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <p>This table has no entity type yet.</p>
+  <button class='btn primary' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>Configure table</button>
+</div><?rdf
+END""" .
+
+rdfop:TableView_edit a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+@PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+PARAMETER ?id "id"
+?><div class='rdfop-c rdfop-tableedit' data-testid='<?rdf PRINT HTML ?id ?>:edit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+  <h2>Configure table</h2>
+  <div class='rdfop-tableedit__grid'>
+    <label>Title
+      <input data-field='label' <?rdf SELECT ?label WHERE { ?id rdfs:label ?label } LIMIT 1 BEGIN ?>value='<?rdf PRINT HTML ?label ?>' data-value='<?rdf PRINT HTML ?label ?>'<?rdf ELSE ?>value='' data-value=''<?rdf END ?>>
+    </label>
+    <label>Entity type
+      <select data-field='itemType' onchange='rdfopTableEditLoadProperties(this.closest(&quot;.rdfop-tableedit&quot;))' <?rdf SELECT ?itemType WHERE { ?id rdfop:itemType ?itemType } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?itemType ?>'<?rdf ELSE ?>data-value=''<?rdf END ?>>
+        <option value=''>Choose type …</option>
+      </select>
+    </label>
+    <label>Open in
+      <select data-field='openTarget' <?rdf SELECT ?target WHERE { ?id rdfop:openTarget ?target } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?target ?>'<?rdf ELSE ?>data-value='https://launix.de/rdfop/schema#OverlayTarget'<?rdf END ?>>
+        <option value='https://launix.de/rdfop/schema#OverlayTarget'>New overlay</option>
+      </select>
+    </label>
+    <label>Open action
+      <select data-field='openAction' <?rdf SELECT ?action WHERE { ?id rdfop:openAction ?action } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?action ?>'<?rdf ELSE ?>data-value='https://launix.de/rdfop/schema#view'<?rdf END ?>>
+        <option value='https://launix.de/rdfop/schema#view'>View</option>
+        <option value='https://launix.de/rdfop/schema#edit'>Edit</option>
+      </select>
+    </label>
+  </div>
+  <div>
+    <h3>Columns</h3>
+    <div class='rdfop-tableedit__columns'><?rdf
+    SELECT ?column, ?order WHERE { ?column rdfop:order ?order . ?id rdfop:children ?column . ?column a rdfop:TableColumn } ORDER BY ?order
+    BEGIN
+      ?><div class='rdfop-tableedit__column' data-column-id='<?rdf PRINT HTML ?column ?>'>
+        <label>Property
+          <select data-column-property <?rdf SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?property ?>'<?rdf ELSE ?>data-value=''<?rdf END ?>><option value=''>Choose property …</option></select>
+        </label>
+        <label>Custom heading
+          <input data-column-label <?rdf SELECT ?columnLabel WHERE { ?column rdfop:columnLabel ?columnLabel } LIMIT 1 BEGIN ?>value='<?rdf PRINT HTML ?columnLabel ?>' data-value='<?rdf PRINT HTML ?columnLabel ?>'<?rdf ELSE ?>value='' data-value=''<?rdf END ?>>
+        </label>
+        <button class='btn' type='button' onclick='rdfopTableEditRemoveColumn(this)'>Remove</button>
+      </div><?rdf
+    END
+    ?></div>
+    <button class='btn' type='button' onclick='rdfopTableEditAddColumn(this)'>Add column</button>
+  </div>
+  <div class='rdfop-tableedit__actions'>
+    <button class='btn primary' type='button' onclick='rdfopTableEditSave(this)'>Save</button>
+    <button class='btn' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'>Cancel</button>
+  </div>
+  <div class='rdfop-tableedit__status'></div>
+</div>""" .
+
+rdfop:OpenView_view a rdfop:EditorComponent ;
+  rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
+PARAMETER ?id "id"
+SELECT ?resource, ?action WHERE { ?id rdfop:openResource ?resource . ?id rdfop:openAction ?action } LIMIT 1
+BEGIN
+?><div class='rdfop-c rdfop-openview' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-resource='<?rdf PRINT HTML ?resource ?>' data-action='<?rdf PRINT HTML ?action ?>'><span class='empty'>Loading …</span></div><?rdf
+ELSE
+?><div class='rdfop-c rdfop-openview empty' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>No resource configured.</div><?rdf
+END""" .
+
+################################################################
+# Tests
+################################################################
+
+rdfop:test_table_view_renders_columns a rdfop:PlaywrightTest ;
+  rdfop:testFor rdfop:TableView ;
+  rdfs:label "Table view renders configured columns" ;
+  rdfop:order "40" ;
+  rdfop:playwright """
+const root = helpers.id();
+const table = helpers.id();
+const column = helpers.id();
+const type = helpers.id();
+const property = helpers.id();
+const item = helpers.id();
+await helpers.insert([
+  helpers.selector(root, table),
+  `${helpers.sid(table)} a <${helpers.S}TableView> .`,
+  `${helpers.sid(table)} <${helpers.S}itemType> ${helpers.sid(type)} .`,
+  `${helpers.sid(table)} <http://www.w3.org/2000/01/rdf-schema#label> "Cases" .`,
+  `${helpers.sid(table)} <${helpers.S}children> ${helpers.sid(column)} .`,
+  `${helpers.sid(column)} a <${helpers.S}TableColumn> .`,
+  `${helpers.sid(column)} <${helpers.S}order> "1" .`,
+  `${helpers.sid(column)} <${helpers.S}columnProperty> ${helpers.sid(property)} .`,
+  `${helpers.sid(property)} <http://www.w3.org/2000/01/rdf-schema#label> "Title" .`,
+  `${helpers.sid(item)} a ${helpers.sid(type)} .`,
+  `${helpers.sid(item)} ${helpers.sid(property)} "Example case" .`,
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await expect(helpers.byId(table).locator('h2')).toHaveText('Cases');
+  await expect(helpers.byId(table).locator('th')).toHaveText('Title');
+  await expect(helpers.byId(table).locator('tbody tr')).toHaveCount(1);
+  await expect(helpers.byId(table).locator('tbody td')).toContainText('Example case');
+} finally {
+  await helpers.cleanup(root);
+  await helpers.cleanup(item);
+  await helpers.cleanup(type);
+  await helpers.cleanup(property);
+}
+""" .
+
+rdfop:test_table_view_opens_and_reuses_tab a rdfop:PlaywrightTest ;
+  rdfop:testFor rdfop:TableView ;
+  rdfs:label "Table view opens and reuses target tab" ;
+  rdfop:order "41" ;
+  rdfop:playwright """
+const root = helpers.id();
+const split = helpers.id();
+const left = helpers.id();
+const right = helpers.id();
+const table = helpers.id();
+const group = helpers.id();
+const pinnedTab = helpers.id();
+const pinned = helpers.id();
+const column = helpers.id();
+const type = helpers.id();
+const property = helpers.id();
+const item = helpers.id();
+await helpers.insert([
+  helpers.selector(root, split),
+  helpers.split(split, 'horizontal', '0.3', left, right),
+  helpers.selector(left, table),
+  helpers.selector(right, group),
+  `${helpers.sid(table)} a <${helpers.S}TableView> .`,
+  `${helpers.sid(table)} <${helpers.S}itemType> ${helpers.sid(type)} .`,
+  `${helpers.sid(table)} <${helpers.S}openTarget> ${helpers.sid(group)} .`,
+  `${helpers.sid(table)} <${helpers.S}openAction> <${helpers.S}view> .`,
+  `${helpers.sid(table)} <${helpers.S}children> ${helpers.sid(column)} .`,
+  `${helpers.sid(column)} a <${helpers.S}TableColumn> .`,
+  `${helpers.sid(column)} <${helpers.S}order> "1" .`,
+  `${helpers.sid(column)} <${helpers.S}columnProperty> ${helpers.sid(property)} .`,
+  helpers.tabGroup(group),
+  helpers.tab(group, pinnedTab, 'Overview', '1', pinned),
+  helpers.htmlView(pinned, 'Pinned'),
+  `${helpers.sid(type)} <${helpers.S}view> <${helpers.S}HTMLView_view> .`,
+  `${helpers.sid(item)} a ${helpers.sid(type)} .`,
+  `${helpers.sid(item)} ${helpers.sid(property)} "Case A" .`,
+  `${helpers.sid(item)} <${helpers.S}html> "Opened case" .`,
+].join('\n'));
+try {
+  await helpers.goto(root);
+  const row = helpers.byId(table).locator('.rdfop-tableview__row');
+  await row.click();
+  await expect(helpers.tabLabels(group)).toHaveCount(2);
+  await expect(helpers.byId(group).locator('.rdfop-tabs__panel--active .rdfop-openview iframe')).toHaveCount(1);
+  await row.click();
+  await expect(helpers.tabLabels(group)).toHaveCount(2);
+  const caseTab = helpers.byId(group).locator('.rdfop-tabs__tab', {hasText:'Case A'});
+  page.once('dialog', dialog => dialog.accept());
+  await caseTab.locator('.rdfop-tabs__close').click();
+  await expect(helpers.byId(table).locator('.rdfop-tableview__row')).toHaveCount(1);
+} finally {
+  await helpers.cleanup(root);
+  await helpers.cleanup(item);
+  await helpers.cleanup(type);
+  await helpers.cleanup(property);
+}
+""" .
+
+rdfop:test_table_view_configuration a rdfop:PlaywrightTest ;
+  rdfop:testFor rdfop:TableView ;
+  rdfs:label "Table view configuration edits type and columns" ;
+  rdfop:order "42" ;
+  rdfop:playwright """
+const root = helpers.id();
+const table = helpers.id();
+const column = helpers.id();
+const type = helpers.id();
+const property = helpers.id();
+await helpers.insert([
+  helpers.selector(root, table),
+  `${helpers.sid(table)} a <${helpers.S}TableView> .`,
+  `${helpers.sid(table)} <${helpers.S}itemType> ${helpers.sid(type)} .`,
+  `${helpers.sid(table)} <http://www.w3.org/2000/01/rdf-schema#label> "Old title" .`,
+  `${helpers.sid(table)} <${helpers.S}openTarget> <${helpers.S}OverlayTarget> .`,
+  `${helpers.sid(table)} <${helpers.S}openAction> <${helpers.S}view> .`,
+  `${helpers.sid(table)} <${helpers.S}children> ${helpers.sid(column)} .`,
+  `${helpers.sid(column)} a <${helpers.S}TableColumn> .`,
+  `${helpers.sid(column)} <${helpers.S}order> "1" .`,
+  `${helpers.sid(column)} <${helpers.S}columnProperty> ${helpers.sid(property)} .`,
+  `${helpers.sid(type)} a <${helpers.S}EntityType> .`,
+  `${helpers.sid(type)} <http://www.w3.org/2000/01/rdf-schema#label> "Case type" .`,
+  `${helpers.sid(property)} a <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .`,
+  `${helpers.sid(property)} <http://www.w3.org/2000/01/rdf-schema#domain> ${helpers.sid(type)} .`,
+  `${helpers.sid(property)} <http://www.w3.org/2000/01/rdf-schema#label> "Case title" .`,
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await helpers.byId(table).getByRole('button', {name:'Configure'}).click();
+  const edit = page.getByTestId(`${table}:edit`);
+  await expect(edit.locator('[data-field=itemType]')).toHaveValue(type);
+  await expect(edit.locator('[data-column-property]')).toHaveValue(property);
+  await edit.locator('[data-field=label]').fill('New title');
+  await edit.getByRole('button', {name:'Save'}).click();
+  await expect(helpers.byId(table).locator('h2')).toHaveText('New title');
+} finally {
+  await helpers.cleanup(root);
+  await helpers.cleanup(type);
+  await helpers.cleanup(property);
+}
+""" .

@@ -169,9 +169,16 @@ The current UI is centered around a few self-describing layout primitives:
 - `rdfop:ComponentSelector` — palette / placeholder that either shows a palette or a selected child
 - `rdfop:Split` / `rdfop:SplitH` / `rdfop:SplitV` — split panes with draggable separator
 - `rdfop:TabGroup` / `rdfop:Tab` — tabbed layout with reorderable tabs
+- `rdfop:TableView` / `rdfop:TableColumn` — type-based tables with configurable columns and open targets
 - `rdfop:HTMLView`, `rdfop:Website`, `rdfop:Browser`, `rdfop:Explorer`, `rdfop:Settings`, `rdfop:SPARQLConsole`, `rdfop:TTLImport`
 
 Drag and drop is URI-based. Internal drags use `/view/<id>` URLs; external `http/https` links can be dropped into palettes or tab bars and are materialized as `rdfop:Website` nodes.
+
+`TableView` instances select rows by `rdfop:itemType`. Their ordered
+`rdfop:TableColumn` children name direct RDF properties. `rdfop:openTarget`
+can point to a `TabGroup` or to `rdfop:OverlayTarget`; `rdfop:openAction`
+selects `rdfop:view` or `rdfop:edit`. Opening the same resource and action in a
+tab group activates the existing tab instead of creating a duplicate.
 
 ## What You Can Build
 

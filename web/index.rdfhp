@@ -96,10 +96,14 @@ PARAMETER ?id "id"
         var editorRoots = [];
         var typeListRoots = [];
         var typeDetailRoots = [];
+        var tableEditRoots = [];
+        var openViewRoots = [];
         if (root.matches && root.matches('.rdfop-detail')) detailRoots.push(root);
         if (root.matches && root.matches('.rdfop-ecedit')) editorRoots.push(root);
         if (root.matches && root.matches('.rdfop-typelist')) typeListRoots.push(root);
         if (root.matches && root.matches('.rdfop-typedetail')) typeDetailRoots.push(root);
+        if (root.matches && root.matches('.rdfop-tableedit')) tableEditRoots.push(root);
+        if (root.matches && root.matches('.rdfop-openview')) openViewRoots.push(root);
         root.querySelectorAll && root.querySelectorAll('.rdfop-detail').forEach(function(node) {
           detailRoots.push(node);
         });
@@ -112,10 +116,18 @@ PARAMETER ?id "id"
         root.querySelectorAll && root.querySelectorAll('.rdfop-typedetail').forEach(function(node) {
           typeDetailRoots.push(node);
         });
+        root.querySelectorAll && root.querySelectorAll('.rdfop-tableedit').forEach(function(node) {
+          tableEditRoots.push(node);
+        });
+        root.querySelectorAll && root.querySelectorAll('.rdfop-openview').forEach(function(node) {
+          openViewRoots.push(node);
+        });
         if (window.rdfopDetailInit) detailRoots.forEach(function(node) { window.rdfopDetailInit(node); });
         if (window.rdfopEditorComponentInit) editorRoots.forEach(function(node) { window.rdfopEditorComponentInit(node); });
         if (window.rdfopTypeListInit) typeListRoots.forEach(function(node) { window.rdfopTypeListInit(node); });
         if (window.rdfopTypeDetailInit) typeDetailRoots.forEach(function(node) { window.rdfopTypeDetailInit(node); });
+        if (window.rdfopTableEditLoad) tableEditRoots.forEach(function(node) { window.rdfopTableEditLoad(node); });
+        if (window.rdfopOpenViewInit) openViewRoots.forEach(function(node) { window.rdfopOpenViewInit(node); });
         if (window.rdfopTabsInit) rdfopTabsInit(root);
       };
 
