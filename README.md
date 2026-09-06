@@ -158,6 +158,7 @@ The framework provides these global functions:
 | `/rdfop-render?id=...&mode=...` | GET | Render a component and return HTML |
 | `/rdfop-save` | POST | Delete and/or insert triples (`delete=TTL&insert=TTL`) |
 | `/rdfop-create` | POST | Create a new child entity under a parent |
+| `/rdfop-create-entity` | POST | Create a standalone entity from an `EntityType` and its `initTemplate` |
 | `/rdfop-delete` | POST | Delete a subtree by id |
 | `/rdfop-source-cleanup` | POST | Server-side cleanup for cross-window drag/drop moves |
 | `/rdfop-playwright-tests` | GET | Expose embedded Playwright tests stored in RDF |
@@ -169,7 +170,7 @@ The current UI is centered around a few self-describing layout primitives:
 - `rdfop:ComponentSelector` — palette / placeholder that either shows a palette or a selected child
 - `rdfop:Split` / `rdfop:SplitH` / `rdfop:SplitV` — split panes with draggable separator
 - `rdfop:TabGroup` / `rdfop:Tab` — tabbed layout with reorderable tabs
-- `rdfop:TableView` / `rdfop:TableColumn` — type-based tables with configurable columns and open targets
+- `rdfop:TableView` / `rdfop:TableColumn` / `rdfop:TableAction` — type-based tables with configurable columns, open targets, and toolbar actions
 - `rdfop:HTMLView`, `rdfop:Website`, `rdfop:Browser`, `rdfop:Explorer`, `rdfop:Settings`, `rdfop:SPARQLConsole`, `rdfop:TTLImport`
 
 Drag and drop is URI-based. Internal drags use `/view/<id>` URLs; external `http/https` links can be dropped into palettes or tab bars and are materialized as `rdfop:Website` nodes.
@@ -179,6 +180,11 @@ Drag and drop is URI-based. Internal drags use `/view/<id>` URLs; external `http
 can point to a `TabGroup` or to `rdfop:OverlayTarget`; `rdfop:openAction`
 selects `rdfop:view` or `rdfop:edit`. Opening the same resource and action in a
 tab group activates the existing tab instead of creating a duplicate.
+Ordered `rdfop:TableAction` children add any number of toolbar buttons. Each
+button has a label plus an `rdfop:action` method and `rdfop:target` resource.
+The standard `rdfop:create` action treats its target as an entity type, creates
+a standalone instance, refreshes the table, and opens the new row through the
+table's configured open target.
 
 ## What You Can Build
 

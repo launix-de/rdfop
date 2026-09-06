@@ -18,6 +18,7 @@ rdfop:PlaywrightTest a rdfs:Class .
 # Methods (public actions callable via /{method}/{id})
 rdfop:view a rdfop:Method .
 rdfop:edit a rdfop:Method .
+rdfop:create a rdfop:Method .
 rdfop:onChildRemoved a rdfop:Method .
 rdfop:CodeGenerator a rdfs:Class .
 rdfop:Expr a rdfs:Class .

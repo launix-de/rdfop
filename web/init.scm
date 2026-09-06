@@ -638,6 +638,45 @@ END
     ))
 )))
 
+/* POST /rdfop-create-entity — create a standalone instance of an EntityType.
+   Unlike /rdfop-create this does not attach the entity to a component tree. */
+(rdfop_routes "/rdfop-create-entity" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/plain")
+    (set body_raw (try (lambda () ((req "body"))) (lambda (e) "")))
+    (set bp (newsession))
+    (map (split body_raw "&") (lambda (pair) (begin
+        (set parts (split pair "="))
+        (set k (urldecode (replace (car parts) "+" " ")))
+        (set v (urldecode (replace (coalesce (car (cdr parts)) "") "+" " ")))
+        (bp k v)
+    )))
+    (set node_type (bp "type"))
+    (if (nil? node_type) (begin
+        ((res "status") 400)
+        ((res "print") "missing type")
+    ) (begin
+        (set new_id (concat "urn:uuid:" (uuid)))
+        (set _it (newsession))
+        (try (lambda () (begin
+            (define resultrow (lambda (o) (_it "tpl" (o "?tpl"))))
+            (eval (parse_sparql "rdf" (concat "SELECT ?tpl WHERE { <" node_type "> <https://launix.de/rdfop/schema#initTemplate> ?tpl } LIMIT 1")))
+        )) (lambda (e) nil))
+        (set base_ttl (concat "<" new_id "> a <" node_type "> .\n"))
+        (set extra_ttl (if (nil? (_it "tpl")) "" (replace (_it "tpl") "$ID" (concat "<" new_id ">"))))
+        (set _create_entity_state (newsession))
+        (_create_entity_state "ok" true)
+        (try (lambda () (load_ttl "rdf" (concat base_ttl extra_ttl))) (lambda (e) (begin
+            (_create_entity_state "ok" false)
+            ((res "status") 500)
+            ((res "print") (concat "error: " e))
+        )))
+        (if (_create_entity_state "ok") (begin
+            ((res "status") 200)
+            ((res "print") new_id)
+        ))
+    ))
+)))
+
 /* POST /rdfop-save — receives urlencoded delete=TTL&insert=TTL */
 (rdfop_routes "/rdfop-save" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/plain")
