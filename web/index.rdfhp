@@ -96,14 +96,18 @@ PARAMETER ?id "id"
         var editorRoots = [];
         var typeListRoots = [];
         var typeDetailRoots = [];
+        var tableViewRoots = [];
         var tableEditRoots = [];
         var openViewRoots = [];
+        var customInitRoots = [];
         if (root.matches && root.matches('.rdfop-detail')) detailRoots.push(root);
         if (root.matches && root.matches('.rdfop-ecedit')) editorRoots.push(root);
         if (root.matches && root.matches('.rdfop-typelist')) typeListRoots.push(root);
         if (root.matches && root.matches('.rdfop-typedetail')) typeDetailRoots.push(root);
+        if (root.matches && root.matches('.rdfop-tableview')) tableViewRoots.push(root);
         if (root.matches && root.matches('.rdfop-tableedit')) tableEditRoots.push(root);
         if (root.matches && root.matches('.rdfop-openview')) openViewRoots.push(root);
+        if (root.matches && root.matches('[data-rdfop-init]')) customInitRoots.push(root);
         root.querySelectorAll && root.querySelectorAll('.rdfop-detail').forEach(function(node) {
           detailRoots.push(node);
         });
@@ -116,26 +120,42 @@ PARAMETER ?id "id"
         root.querySelectorAll && root.querySelectorAll('.rdfop-typedetail').forEach(function(node) {
           typeDetailRoots.push(node);
         });
+        root.querySelectorAll && root.querySelectorAll('.rdfop-tableview').forEach(function(node) {
+          tableViewRoots.push(node);
+        });
         root.querySelectorAll && root.querySelectorAll('.rdfop-tableedit').forEach(function(node) {
           tableEditRoots.push(node);
         });
         root.querySelectorAll && root.querySelectorAll('.rdfop-openview').forEach(function(node) {
           openViewRoots.push(node);
         });
+        root.querySelectorAll && root.querySelectorAll('[data-rdfop-init]').forEach(function(node) {
+          customInitRoots.push(node);
+        });
         if (window.rdfopDetailInit) detailRoots.forEach(function(node) { window.rdfopDetailInit(node); });
         if (window.rdfopEditorComponentInit) editorRoots.forEach(function(node) { window.rdfopEditorComponentInit(node); });
         if (window.rdfopTypeListInit) typeListRoots.forEach(function(node) { window.rdfopTypeListInit(node); });
         if (window.rdfopTypeDetailInit) typeDetailRoots.forEach(function(node) { window.rdfopTypeDetailInit(node); });
+        if (window.rdfopTableViewInit) tableViewRoots.forEach(function(node) { window.rdfopTableViewInit(node); });
         if (window.rdfopTableEditLoad) tableEditRoots.forEach(function(node) { window.rdfopTableEditLoad(node); });
         if (window.rdfopOpenViewInit) openViewRoots.forEach(function(node) { window.rdfopOpenViewInit(node); });
+        customInitRoots.forEach(function(node) {
+          var initializer = window[node.dataset.rdfopInit || ''];
+          if (typeof initializer === 'function') initializer(node);
+        });
         if (window.rdfopTabsInit) rdfopTabsInit(root);
       };
+
+      function focusOverlayContent(content, fallback) {
+        const autofocus = content && content.querySelector('[autofocus]');
+        (autofocus || fallback).focus();
+      }
 
       function openOverlayHTML(html){
         const { content, closeBtn } = buildOverlaySkeleton();
         content.innerHTML = html;
         window.rdfopMountNode(content);
-        closeBtn.focus();
+        focusOverlayContent(content, closeBtn);
       }
       window.openOverlayHTML = openOverlayHTML;
 
@@ -173,7 +193,7 @@ PARAMETER ?id "id"
         } catch (e) {
           target.content.innerHTML = '<div style=\"color:#b91c1c\">Request failed.</div>';
         }
-        if (target.closeBtn) target.closeBtn.focus();
+        if (target.closeBtn) focusOverlayContent(target.content, target.closeBtn);
       }
       window.overlayFetch = overlayFetch;
 
@@ -739,5 +759,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
   <script>
   /* component JS loaded from rdfop:js attributes */
   <?rdf CALL emit_component_js(REQ, RES) ?>
+  /* The initial document was rendered before component initializers existed. */
+  window.rdfopMountNode(document);
   </script>
 </body></html>

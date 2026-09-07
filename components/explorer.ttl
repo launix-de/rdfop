@@ -13,7 +13,7 @@ rdfop:Explorer rdfop:view rdfop:Explorer_view .
 rdfop:Explorer_view a rdfop:EditorComponent ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
-SELECT ?dummy WHERE { ?id a rdfop:Explorer }
+SELECT ?id WHERE { ?id a rdfop:Explorer }
 BEGIN
 ?><div class='rdfop-c' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' style='padding:1em'>
   <h2>Knowledge base</h2>
