@@ -31,7 +31,17 @@ test('embedded RDF Playwright suite', async ({ page, request, baseURL }) => {
   const resp = await request.get(`${baseURL}/rdfop-playwright-tests`);
   expect(resp.ok()).toBeTruthy();
   const filter = process.env.RDFOP_TEST_FILTER || '';
-  const cases = sortTests(await resp.json()).filter(tc => {
+  const body = await resp.text();
+  const cases = sortTests(body.split('\n').filter(Boolean).map(line => {
+    const row = JSON.parse(line);
+    return {
+      id: row['?id'],
+      label: row['?label'],
+      for: row['?target'],
+      order: row['?ord'],
+      code: row['?code'],
+    };
+  })).filter(tc => {
     if (!filter) return true;
     const hay = `${tc.id || ''}\n${tc.label || ''}\n${tc.for || ''}`;
     return hay.includes(filter);

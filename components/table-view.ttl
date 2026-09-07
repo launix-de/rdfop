@@ -90,6 +90,22 @@ window.rdfopTableViewInit = async function(root) {
   var body = root.querySelector('.rdfop-tableview__table tbody');
   if (!body) return;
   var rows = Array.from(body.querySelectorAll('.rdfop-tableview__row'));
+  var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  if (p.id && rows.length) {
+    var labelRows = await _rdfopQuery(
+      'SELECT ?row, ?label, ?ord WHERE { ' + rdfopSid(p.id) +
+      ' <https://launix.de/rdfop/schema#children> ?column . ' +
+      '?column a <https://launix.de/rdfop/schema#TableColumn> . ' +
+      '?column <https://launix.de/rdfop/schema#order> ?ord . ' +
+      '?column <https://launix.de/rdfop/schema#columnProperty> ?property . ' +
+      '?row ?property ?label } ORDER BY ?row ?ord'
+    );
+    labelRows.forEach(function(result) {
+      var row = rows.find(function(candidate) { return candidate.dataset.resource === result['?row']; });
+      if (row && !row.dataset.label) row.dataset.label = result['?label'] || '';
+    });
+  }
+  rows.forEach(function(row) { row.draggable = true; });
   var filterProperty = root.dataset.runtimeFilterProperty || '';
   if (filterProperty) {
     var filterValue = root.dataset.runtimeFilterValue || '';
@@ -185,6 +201,7 @@ window.rdfopTableOpenInTabs = async function(targetId, resource, action, label) 
 window.rdfopTableOpenRow = async function(row) {
   var table = row.closest('.rdfop-tableview');
   if (!table) return;
+  if (table.__rdfopInitPromise) await table.__rdfopInitPromise;
   var p = JSON.parse(table.dataset.rdfopParams || '{}');
   var resource = row.dataset.resource;
   var action = table.dataset.openAction || 'https://launix.de/rdfop/schema#view';
@@ -574,7 +591,7 @@ PARAMETER ?id "id"
 PARAMETER ?filter "filter"
 SELECT ?itemType WHERE { ?id rdfop:itemType ?itemType } LIMIT 1
 BEGIN
-?><div class='rdfop-c rdfop-tableview' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;filter&quot;:<?rdf PRINT JSON ?filter ?>}' <?rdf
+?><div class='rdfop-c rdfop-tableview' data-rdfop-init='rdfopTableViewInit' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;filter&quot;:<?rdf PRINT JSON ?filter ?>}' <?rdf
 SELECT ?target WHERE { ?id rdfop:openTarget ?target } LIMIT 1
 BEGIN ?>data-open-target='<?rdf PRINT HTML ?target ?>'<?rdf END ?> <?rdf
 SELECT ?action WHERE { ?id rdfop:openAction ?action } LIMIT 1
@@ -621,9 +638,9 @@ BEGIN ?>data-runtime-filter-property='<?rdf PRINT HTML ?filterProperty ?>' data-
       END
       ?></tr></thead>
       <tbody><?rdf
-      SELECT DISTINCT ?row WHERE { ?row a ?itemType } ORDER BY ?row
+      SELECT DISTINCT ?row WHERE { ?id rdfop:itemType ?rowType . ?row a ?rowType } ORDER BY ?row
       BEGIN
-        ?><tr class='rdfop-tableview__row' tabindex='0' draggable='true' data-resource='<?rdf PRINT HTML ?row ?>' data-rdfop-uri='/view/<?rdf PRINT URL ?row ?>' onclick='if(!event.target.closest(&quot;a,button,input,select&quot;))rdfopTableOpenRow(this)' onkeydown='rdfopTableRowKey(event,this)' ondragstart='rdfopTableRowDragStart(event,this)' ondragend='rdfopTableRowDragEnd(event,this)'><?rdf
+        ?><tr class='rdfop-tableview__row' tabindex='0' draggable='false' data-resource='<?rdf PRINT HTML ?row ?>' data-rdfop-uri='/view/<?rdf PRINT URL ?row ?>' onclick='if(!event.target.closest(&quot;a,button,input,select&quot;))rdfopTableOpenRow(this)' onkeydown='rdfopTableRowKey(event,this)' ondragstart='rdfopTableRowDragStart(event,this)' ondragend='rdfopTableRowDragEnd(event,this)'><?rdf
         SELECT ?column, ?order WHERE { ?column rdfop:order ?order . ?id rdfop:children ?column . ?column a rdfop:TableColumn } ORDER BY ?order
         BEGIN
           SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1
@@ -656,7 +673,7 @@ SELECT ?lock WHERE { ?id rdfop:configurationLocked ?lock } LIMIT 1
 BEGIN
 ?><div class='rdfop-c rdfop-tableedit error' data-testid='<?rdf PRINT HTML ?id ?>:edit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>This table configuration is locked.</div><?rdf
 ELSE
-?><div class='rdfop-c rdfop-tableedit' data-testid='<?rdf PRINT HTML ?id ?>:edit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+?><div class='rdfop-c rdfop-tableedit' data-rdfop-init='rdfopTableEditLoad' data-testid='<?rdf PRINT HTML ?id ?>:edit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <h2>Configure table</h2>
   <div class='rdfop-tableedit__grid'>
     <label>Title
@@ -750,7 +767,7 @@ rdfop:OpenView_view a rdfop:EditorComponent ;
 PARAMETER ?id "id"
 SELECT ?resource, ?action WHERE { ?id rdfop:openResource ?resource . ?id rdfop:openAction ?action } LIMIT 1
 BEGIN
-?><div class='rdfop-c rdfop-openview' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-resource='<?rdf PRINT HTML ?resource ?>' data-action='<?rdf PRINT HTML ?action ?>'><span class='empty'>Loading …</span></div><?rdf
+?><div class='rdfop-c rdfop-openview' data-rdfop-init='rdfopOpenViewInit' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-resource='<?rdf PRINT HTML ?resource ?>' data-action='<?rdf PRINT HTML ?action ?>'><span class='empty'>Loading …</span></div><?rdf
 ELSE
 ?><div class='rdfop-c rdfop-openview empty' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>No resource configured.</div><?rdf
 END""" .

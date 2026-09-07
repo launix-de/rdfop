@@ -92,58 +92,18 @@ PARAMETER ?id "id"
 
       window.rdfopMountNode = function(root) {
         if (!root) return;
-        var detailRoots = [];
-        var editorRoots = [];
-        var typeListRoots = [];
-        var typeDetailRoots = [];
-        var tableViewRoots = [];
-        var tableEditRoots = [];
-        var openViewRoots = [];
-        var customInitRoots = [];
-        if (root.matches && root.matches('.rdfop-detail')) detailRoots.push(root);
-        if (root.matches && root.matches('.rdfop-ecedit')) editorRoots.push(root);
-        if (root.matches && root.matches('.rdfop-typelist')) typeListRoots.push(root);
-        if (root.matches && root.matches('.rdfop-typedetail')) typeDetailRoots.push(root);
-        if (root.matches && root.matches('.rdfop-tableview')) tableViewRoots.push(root);
-        if (root.matches && root.matches('.rdfop-tableedit')) tableEditRoots.push(root);
-        if (root.matches && root.matches('.rdfop-openview')) openViewRoots.push(root);
-        if (root.matches && root.matches('[data-rdfop-init]')) customInitRoots.push(root);
-        root.querySelectorAll && root.querySelectorAll('.rdfop-detail').forEach(function(node) {
-          detailRoots.push(node);
-        });
-        root.querySelectorAll && root.querySelectorAll('.rdfop-ecedit').forEach(function(node) {
-          editorRoots.push(node);
-        });
-        root.querySelectorAll && root.querySelectorAll('.rdfop-typelist').forEach(function(node) {
-          typeListRoots.push(node);
-        });
-        root.querySelectorAll && root.querySelectorAll('.rdfop-typedetail').forEach(function(node) {
-          typeDetailRoots.push(node);
-        });
-        root.querySelectorAll && root.querySelectorAll('.rdfop-tableview').forEach(function(node) {
-          tableViewRoots.push(node);
-        });
-        root.querySelectorAll && root.querySelectorAll('.rdfop-tableedit').forEach(function(node) {
-          tableEditRoots.push(node);
-        });
-        root.querySelectorAll && root.querySelectorAll('.rdfop-openview').forEach(function(node) {
-          openViewRoots.push(node);
-        });
+        var componentRoots = [];
+        if (root.matches && root.matches('[data-rdfop-init]')) componentRoots.push(root);
         root.querySelectorAll && root.querySelectorAll('[data-rdfop-init]').forEach(function(node) {
-          customInitRoots.push(node);
+          componentRoots.push(node);
         });
-        if (window.rdfopDetailInit) detailRoots.forEach(function(node) { window.rdfopDetailInit(node); });
-        if (window.rdfopEditorComponentInit) editorRoots.forEach(function(node) { window.rdfopEditorComponentInit(node); });
-        if (window.rdfopTypeListInit) typeListRoots.forEach(function(node) { window.rdfopTypeListInit(node); });
-        if (window.rdfopTypeDetailInit) typeDetailRoots.forEach(function(node) { window.rdfopTypeDetailInit(node); });
-        if (window.rdfopTableViewInit) tableViewRoots.forEach(function(node) { window.rdfopTableViewInit(node); });
-        if (window.rdfopTableEditLoad) tableEditRoots.forEach(function(node) { window.rdfopTableEditLoad(node); });
-        if (window.rdfopOpenViewInit) openViewRoots.forEach(function(node) { window.rdfopOpenViewInit(node); });
-        customInitRoots.forEach(function(node) {
+        componentRoots.forEach(function(node) {
           var initializer = window[node.dataset.rdfopInit || ''];
-          if (typeof initializer === 'function') initializer(node);
+          if (typeof initializer === 'function') {
+            var result = initializer(node);
+            if (result && typeof result.then === 'function') node.__rdfopInitPromise = result;
+          }
         });
-        if (window.rdfopTabsInit) rdfopTabsInit(root);
       };
 
       function focusOverlayContent(content, fallback) {
@@ -187,6 +147,7 @@ PARAMETER ?id "id"
         if (!target) target = buildOverlaySkeleton();
         try {
           const resp = await fetch(url, opts);
+          if (!resp.ok) throw new Error((await resp.text()) || ('HTTP ' + resp.status));
           const html = await resp.text();
           target.content.innerHTML = html;
           window.rdfopMountNode(target.content);
@@ -554,9 +515,42 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         return true;
       };
 
+      window.rdfopTrackDrop = function(promise) {
+        window.__rdfopDropPending = true;
+        window.__rdfopPendingDrop = Promise.resolve(promise);
+        window.__rdfopPendingDrop.then(
+          function() { window.__rdfopDropPending = false; },
+          function(error) {
+            window.__rdfopDropPending = false;
+            console.error('rdfop drop failed', error);
+          }
+        );
+        return window.__rdfopPendingDrop;
+      };
+
       window.rdfopDragCleanupSource = async function(e, result) {
         var source = window.rdfopDragReadSource(e);
         if (!source || (result && result.reordered)) return false;
+        if (source.kind === 'selector' && source.selectorId && source.contentId && source.parentId &&
+            !(result && (result.leaveSourcePalette || result.replacementId))) {
+          var selector = rdfopSid(source.selectorId);
+          var content = rdfopSid(source.contentId);
+          var saveResponse = await fetch('/rdfop-save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'delete=' + encodeURIComponent(
+              selector + ' <https://launix.de/rdfop/schema#selectedNode> ' + content + ' .\n' +
+              selector + ' <https://launix.de/rdfop/schema#children> ' + content + ' .'
+            )
+          });
+          if (!saveResponse.ok) throw new Error((await saveResponse.text()) || 'Source cleanup failed');
+          var actionResponse = await fetch(
+            '/onChildRemoved/' + encodeURIComponent(source.parentId) +
+            '?child=' + encodeURIComponent(source.selectorId)
+          );
+          if (!actionResponse.ok) throw new Error((await actionResponse.text()) || 'Parent cleanup failed');
+          return true;
+        }
         var params = new URLSearchParams();
         Object.keys(source).forEach(function(key) {
           var value = source[key];
@@ -565,11 +559,15 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         });
         if (result && result.leaveSourcePalette) params.set('leaveSourcePalette', 'true');
         if (result && result.replacementId) params.set('replacementId', String(result.replacementId));
-        await fetch('/rdfop-source-cleanup', {
+        var response = await fetch('/rdfop-source-cleanup', {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: params.toString()
         });
+        if (!response.ok) {
+          var message = await response.text();
+          throw new Error(message || ('Source cleanup failed (' + response.status + ')'));
+        }
         return true;
       };
 
@@ -639,19 +637,21 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
       var _undoMaxDepth = 100;
 
       window.rdfopSave = async function(deleteTtl, insertTtl) {
+        var body = '';
+        if (deleteTtl) body += 'delete=' + encodeURIComponent(deleteTtl);
+        if (insertTtl) body += (body ? '&' : '') + 'insert=' + encodeURIComponent(insertTtl);
+        var resp = await fetch('/rdfop-save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body
+        });
+        if (!resp.ok) throw new Error((await resp.text()) || ('HTTP ' + resp.status));
         _rdfopUndoStack.push({del: deleteTtl, ins: insertTtl, t: Date.now()});
         if (_rdfopUndoStack.length > _undoMaxDepth) _rdfopUndoStack.shift();
         _rdfopRedoStack.length = 0;
         localStorage.setItem('rdfop-undo', JSON.stringify(_rdfopUndoStack));
         localStorage.setItem('rdfop-redo', '[]');
-        var body = '';
-        if (deleteTtl) body += 'delete=' + encodeURIComponent(deleteTtl);
-        if (insertTtl) body += (body ? '&' : '') + 'insert=' + encodeURIComponent(insertTtl);
-        await fetch('/rdfop-save', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: body
-        });
+        return resp;
       };
 
       window.rdfopUndo = async function() {
@@ -696,6 +696,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         /* re-render main */
         var canvas = document.querySelector('.canvas');
         var resp = await fetch('/rdfop-render?id=main&mode=view');
+        if (!resp.ok) throw new Error((await resp.text()) || ('HTTP ' + resp.status));
         var html = await resp.text();
         var tpl = document.createElement('template');
         tpl.innerHTML = html;
@@ -717,20 +718,27 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
       });
 
       window.rdfopSwap = async function(el, mode) {
+        if (!el) return null;
         var p = JSON.parse(el.dataset.rdfopParams || '{}');
         p.mode = mode;
         try {
           var resp = await fetch('/rdfop-render?' + new URLSearchParams(p));
+          if (!resp.ok) throw new Error((await resp.text()) || ('HTTP ' + resp.status));
           var html = await resp.text();
           var tpl = document.createElement('template');
           tpl.innerHTML = html;
           var node = tpl.content.firstElementChild;
+          if (!node) throw new Error('Component render returned no root element');
           el.replaceWith(node);
           /* auto-focus + auto-size for textedit inputs */
           var te = node.querySelector('.rdfop-textedit--editing input');
           if (te) { if (window.rdfopTextFit) rdfopTextFit(te); te.focus(); te.select(); }
           window.rdfopMountNode(node);
-        } catch(e) { console.error('rdfopSwap', e); }
+          return node;
+        } catch(e) {
+          console.error('rdfopSwap', e);
+          throw e;
+        }
       };
 
       window.rdfopCommit = async function(btn) {
@@ -764,7 +772,13 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
           var p = JSON.parse(el.dataset.rdfopParams || '{}');
           p.mode = 'view';
           var r = await fetch('/rdfop-render?' + new URLSearchParams(p));
-          el.outerHTML = await r.text();
+          if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+          var tpl = document.createElement('template');
+          tpl.innerHTML = await r.text();
+          var node = tpl.content.firstElementChild;
+          if (!node) throw new Error('Component render returned no root element');
+          el.replaceWith(node);
+          window.rdfopMountNode(node);
           /* activate the newly created tab by ID */
           setTimeout(function(){
             var tab = document.querySelector('.rdfop-tabs__tab[data-tab-id="' + newId.trim() + '"]');

@@ -15,19 +15,25 @@ rdfop:ComponentSelector a rdfop:EntityType .
 rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:range rdf:Resource .
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
 rdfop:ComponentSelector rdfop:onChildRemoved """
-PARAMETER ?removedChild "child"
-SELECT ?removedChild WHERE { ?id rdfop:children ?removedChild }
+PARAMETER ?child "child"
+?idTerm = CALL rdf_term(?id)
+?childTerm = CALL rdf_term(?child)
+SELECT ?parent WHERE { ?parent rdfop:children ?id } LIMIT 1
 BEGIN
-  DELETE { ?id rdfop:children ?removedChild }
-  DELETE { ?id rdfop:selectedNode ?removedChild }
-END
-SELECT ?still WHERE { ?id rdfop:selectedNode ?still }
-BEGIN
+  CALL rdf_update(CONCAT(
+    "DELETE { ", ?idTerm, " <https://launix.de/rdfop/schema#children> ", ?childTerm, " . ",
+    ?idTerm, " <https://launix.de/rdfop/schema#selectedNode> ", ?childTerm, " . } WHERE { ",
+    ?idTerm, " <https://launix.de/rdfop/schema#children> ", ?childTerm, " . ",
+    ?idTerm, " <https://launix.de/rdfop/schema#selectedNode> ", ?childTerm, " . }"
+  ), REQ, RES)
+  CALL rdfop_action("onChildRemoved", ?parent, "child", ?id)
 ELSE
-  SELECT ?parent WHERE { ?parent rdfop:children ?id }
-  BEGIN
-    CALL rdfop_action("onChildRemoved", ?parent, "child", ?id)
-  END
+  CALL rdf_update(CONCAT(
+    "DELETE { ", ?idTerm, " <https://launix.de/rdfop/schema#children> ", ?childTerm, " . ",
+    ?idTerm, " <https://launix.de/rdfop/schema#selectedNode> ", ?childTerm, " . } WHERE { ",
+    ?idTerm, " <https://launix.de/rdfop/schema#children> ", ?childTerm, " . ",
+    ?idTerm, " <https://launix.de/rdfop/schema#selectedNode> ", ?childTerm, " . }"
+  ), REQ, RES)
 END
 """ .
 
@@ -118,6 +124,8 @@ window.rdfopSelectorDispatchChildRemoved = function(el) {
 window.rdfopSelectorHandleSameWindowDrop = async function(el, contentId, result) {
   var replacementId = result && result.replacementId ? result.replacementId : null;
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
+  var sourceSplit = el.closest('.rdfop-split');
+  var sourceSplitParent = sourceSplit ? sourceSplit.closest('.rdfop-selector--filled') : null;
   if (result && result.leaveSourcePalette) {
     await rdfopSelectorAssign(p.id, null, contentId);
     await rdfopSwap(el, 'view');
@@ -129,6 +137,10 @@ window.rdfopSelectorHandleSameWindowDrop = async function(el, contentId, result)
     return;
   }
   await rdfopSelectorRemoveContent(p.id, contentId);
+  if (sourceSplitParent) {
+    await rdfopSwap(sourceSplitParent, 'view');
+    return;
+  }
   rdfopSelectorDispatchChildRemoved(el);
 };
 window.rdfopSelectorClearSelection = async function(btn) {
@@ -180,12 +192,18 @@ window.rdfopSelectorDragStart = function(e, btn) {
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   var contentId = el.dataset.selected;
   if (!contentId) return false;
+  var splitParent = el.parentElement && el.parentElement.closest('.rdfop-split');
+  var tabParent = el.parentElement && el.parentElement.closest('.rdfop-tabs__panel');
+  var parentId = splitParent
+    ? JSON.parse(splitParent.dataset.rdfopParams || '{}').id
+    : (tabParent ? tabParent.dataset.tabId : null);
   rdfopDragStartLink(e, btn, {
     kind: 'component',
     sourcePayload: {
       kind: 'selector',
       selectorId: p.id,
-      contentId: contentId
+      contentId: contentId,
+      parentId: parentId
     },
     handleSameWindowDrop: async function(result) {
       await rdfopSelectorHandleSameWindowDrop(el, contentId, result || {});
@@ -224,6 +242,8 @@ window.rdfopSelectorDragOver = function(e, el) {
 window.rdfopSelectorPaletteDrop = async function(e, el) {
   e.preventDefault();
   e.stopPropagation();
+  var droppedUri = rdfopDragReadUri(e);
+  if (droppedUri) rdfopDragMarkDropped(droppedUri);
   rdfopSelectorClearDropClasses(el);
   rdfopDragDebug('selector-palette-drop-start', e, {
     targetTestId: el && el.dataset ? el.dataset.testid : null
@@ -231,7 +251,6 @@ window.rdfopSelectorPaletteDrop = async function(e, el) {
   var data = await rdfopDragMaterializeDroppedComponent(e);
   console.log('[rdfop-dnd]', 'selector-palette-drop-data', data);
   if (!data || !data.id) return;
-  rdfopDragMarkDropped(data.uri);
   var p = JSON.parse(el.dataset.rdfopParams || '{}');
   await rdfopSelectorAssign(p.id, data.id, null);
   if (!data.externalUrl && !rdfopDragHasLocalSource(data.uri)) await rdfopDragCleanupSource(e, {leaveSourcePalette: true});
@@ -269,6 +288,8 @@ window.rdfopSelectorCreateSplit = async function(selectorId, targetId, droppedId
 window.rdfopSelectorFilledDrop = async function(e, el) {
   e.preventDefault();
   e.stopPropagation();
+  var droppedUri = rdfopDragReadUri(e);
+  if (droppedUri) rdfopDragMarkDropped(droppedUri);
   var inner = e.target.closest('.rdfop-selector--filled, .rdfop-palette');
   if (inner && inner !== el && el.contains(inner)) el = inner;
   rdfopSelectorClearDropClasses(el);
@@ -282,7 +303,6 @@ window.rdfopSelectorFilledDrop = async function(e, el) {
   var tgtSel = el.dataset.selected;
   var zone = _rdfopSelectorDropZone(e, el);
   if (!tgtSel || data.id === tgtSel) return;
-  rdfopDragMarkDropped(data.uri);
   if (zone === 'center') {
     await rdfopSelectorAssign(p.id, data.id, tgtSel);
     if (!data.externalUrl) {
@@ -321,13 +341,13 @@ document.addEventListener('rdfop:layoutChildRemoved', function(e) {
 PARAMETER ?id "id"
 SELECT ?sel WHERE { ?id rdfop:selectedNode ?sel } LIMIT 1
 BEGIN
-?><div class='rdfop-c rdfop-selector--filled' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorFilledDrop(event,this)'>
+?><div class='rdfop-c rdfop-selector--filled' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-selected='<?rdf PRINT HTML ?sel ?>' data-label='' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopTrackDrop(rdfopSelectorFilledDrop(event,this))'>
   <a class='rdfop-selector__move' href='/view/<?rdf PRINT URL ?sel ?>' draggable='true' ondragstart='rdfopSelectorDragStart(event,this)' ondragend='rdfopSelectorDragEnd(event)' onclick='event.preventDefault()'>&#x2630;</a>
   <button class='rdfop-selector__clear' onclick='event.preventDefault();event.stopPropagation();rdfopSelectorClearSelection(this)'>&#x2715;</button>
   <?rdf CALL render_object(?sel, REQ, RES) ?>
 </div><?rdf
 ELSE
-?><div class='rdfop-c rdfop-palette' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopSelectorPaletteDrop(event,this)'>
+?><div class='rdfop-c rdfop-palette' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' ondragover='rdfopSelectorDragOver(event,this)' ondragleave='rdfopSelectorClearDropClasses(this)' ondrop='rdfopTrackDrop(rdfopSelectorPaletteDrop(event,this))'>
   <button class='rdfop-palette__remove' onclick='event.preventDefault();event.stopPropagation();rdfopSelectorPaletteRemove(this)'>&#x2715;</button>
   <?rdf SELECT DISTINCT ?type, ?label WHERE { ?type rdfop:paletteVisible "true" . ?type a rdfop:EntityType . ?type rdfs:label ?label }
   BEGIN
@@ -444,7 +464,7 @@ const root = helpers.id();
 const url = 'https://example.com/docs';
 await helpers.insert([
   `${helpers.sid(root)} a <${helpers.S}ComponentSelector> .`
-].join('\\n'));
+].join('\n'));
 try {
   await helpers.goto(root);
   await helpers.dragExternalUrlToPalette(root, url);

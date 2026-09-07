@@ -133,7 +133,7 @@ window.rdfopTypeDetailInit = async function(root) {
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 @PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 PARAMETER ?id "id"
-?><div class='rdfop-c rdfop-typelist' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+?><div class='rdfop-c rdfop-typelist' data-rdfop-init='rdfopTypeListInit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <div class='rdfop-typelist__head'>
     <div>
       <h2>Types</h2>
@@ -201,7 +201,7 @@ rdfop:TypeDetail_view a rdfop:EditorComponent ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 @PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 PARAMETER ?typeId "typeId"
-?><div class='rdfop-c rdfop-typedetail' data-rdfop-params='{&quot;typeId&quot;:<?rdf PRINT JSON ?typeId ?>}'>
+?><div class='rdfop-c rdfop-typedetail' data-rdfop-init='rdfopTypeDetailInit' data-rdfop-params='{&quot;typeId&quot;:<?rdf PRINT JSON ?typeId ?>}'>
   <div class='rdfop-typedetail__grid'>
     <div>
       <h2>Type Detail</h2>

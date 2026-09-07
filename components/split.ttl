@@ -20,111 +20,32 @@ rdfop:splitDirection a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:
 rdfop:splitRatio a rdf:Property ; rdfs:domain rdfop:Split ; rdfs:range rdfs:Literal .
 rdfop:Split rdfop:onChildRemoved """
 PARAMETER ?child "child"
-SELECT ?gp, ?removedSel, ?sib, ?sibContent WHERE {
-  ?gp rdfop:children ?id .
-  ?id rdfop:children ?removedSel .
-  FILTER(?removedSel = ?child) .
-  ?id rdfop:children ?sib .
-  FILTER(?sib != ?removedSel) .
-  ?sib rdfop:children ?sibContent .
-  ?sib rdfop:selectedNode ?sibContent
-}
-BEGIN
-  DELETE { ?id rdfop:children ?removedSel }
-  DELETE { ?gp rdfop:children ?id }
-  DELETE { ?gp rdfop:selectedNode ?id }
-  DELETE { ?sib rdfop:children ?sibContent }
-  DELETE { ?sib rdfop:selectedNode ?sibContent }
-  INSERT { ?gp rdfop:children ?sibContent }
-  INSERT { ?gp rdfop:selectedNode ?sibContent }
-  SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
-  DELETE { ?id rdfop:children ?sib }
-  SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
-  SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-ELSE
-  SELECT ?gp, ?removedSel, ?sib, ?sibContent WHERE {
-    ?gp rdfop:children ?id .
-    ?id rdfop:children ?removedSel .
-    ?removedSel rdfop:children ?child .
-    ?id rdfop:children ?sib .
-    FILTER(?sib != ?removedSel) .
-    ?sib rdfop:children ?sibContent .
-    ?sib rdfop:selectedNode ?sibContent
-  }
-  BEGIN
-    DELETE { ?id rdfop:children ?removedSel }
-    DELETE { ?gp rdfop:children ?id }
-    DELETE { ?gp rdfop:selectedNode ?id }
-    DELETE { ?sib rdfop:children ?sibContent }
-    DELETE { ?sib rdfop:selectedNode ?sibContent }
-    INSERT { ?gp rdfop:children ?sibContent }
-    INSERT { ?gp rdfop:selectedNode ?sibContent }
-    SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
-    DELETE { ?id rdfop:children ?sib }
-    SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
-    SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-  ELSE
-    SELECT ?gp, ?removedSel, ?sib WHERE {
-      ?gp rdfop:children ?id .
-      ?id rdfop:children ?removedSel .
-      FILTER(?removedSel = ?child) .
-      ?id rdfop:children ?sib .
-      FILTER(?sib != ?removedSel)
-    }
-    BEGIN
-      DELETE { ?id rdfop:children ?removedSel }
-      DELETE { ?gp rdfop:children ?id }
-      DELETE { ?gp rdfop:selectedNode ?id }
-      SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
-      DELETE { ?id rdfop:children ?sib }
-      SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
-      SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-    ELSE
-      SELECT ?gp, ?removedSel, ?sib WHERE {
-        ?gp rdfop:children ?id .
-        ?id rdfop:children ?removedSel .
-        ?removedSel rdfop:children ?child .
-        ?id rdfop:children ?sib .
-        FILTER(?sib != ?removedSel)
-      }
-      BEGIN
-        DELETE { ?id rdfop:children ?removedSel }
-        DELETE { ?gp rdfop:children ?id }
-        DELETE { ?gp rdfop:selectedNode ?id }
-        SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
-        DELETE { ?id rdfop:children ?sib }
-        SELECT ?p, ?o WHERE { ?sib ?p ?o } BEGIN DELETE { ?sib ?p ?o } END
-        SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-      ELSE
-        SELECT ?gp, ?removedSel WHERE {
-          ?gp rdfop:children ?id .
-          ?id rdfop:children ?removedSel .
-          FILTER(?removedSel = ?child)
-        }
-        BEGIN
-          DELETE { ?id rdfop:children ?removedSel }
-          DELETE { ?gp rdfop:children ?id }
-          DELETE { ?gp rdfop:selectedNode ?id }
-          SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
-          SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-        ELSE
-          SELECT ?gp, ?removedSel WHERE {
-            ?gp rdfop:children ?id .
-            ?id rdfop:children ?removedSel .
-            ?removedSel rdfop:children ?child
-          }
-          BEGIN
-            DELETE { ?id rdfop:children ?removedSel }
-            DELETE { ?gp rdfop:children ?id }
-            DELETE { ?gp rdfop:selectedNode ?id }
-            SELECT ?p, ?o WHERE { ?removedSel ?p ?o } BEGIN DELETE { ?removedSel ?p ?o } END
-            SELECT ?p, ?o WHERE { ?id ?p ?o } BEGIN DELETE { ?id ?p ?o } END
-          END
-        END
-      END
-    END
-  END
-END
+?idTerm = CALL rdf_term(?id)
+?childTerm = CALL rdf_term(?child)
+CALL rdf_update(CONCAT(
+  "DELETE { ",
+  "?gp <https://launix.de/rdfop/schema#children> ", ?idTerm, " . ",
+  "?gp <https://launix.de/rdfop/schema#selectedNode> ", ?idTerm, " . ",
+  "?sib <https://launix.de/rdfop/schema#children> ?sibContent . ",
+  "?sib <https://launix.de/rdfop/schema#selectedNode> ?sibContent . } ",
+  "INSERT { ?gp <https://launix.de/rdfop/schema#children> ?sibContent . ",
+  "?gp <https://launix.de/rdfop/schema#selectedNode> ?sibContent . } ",
+  "WHERE { ?gp <https://launix.de/rdfop/schema#children> ", ?idTerm, " . ",
+  ?idTerm, " <https://launix.de/rdfop/schema#children> ", ?childTerm, " . ",
+  ?idTerm, " <https://launix.de/rdfop/schema#children> ?sib . ",
+  "FILTER(?sib != ", ?childTerm, ") ",
+  "?sib <https://launix.de/rdfop/schema#children> ?sibContent . ",
+  "?sib <https://launix.de/rdfop/schema#selectedNode> ?sibContent . }"
+), REQ, RES)
+CALL rdf_update(CONCAT(
+  "DELETE { ", ?childTerm, " ?childP ?childO . ?sib ?sibP ?sibO . ",
+  ?idTerm, " ?splitP ?splitO . } WHERE { ",
+  ?idTerm, " <https://launix.de/rdfop/schema#children> ", ?childTerm, " . ",
+  ?idTerm, " <https://launix.de/rdfop/schema#children> ?sib . ",
+  "FILTER(?sib != ", ?childTerm, ") ",
+  ?childTerm, " ?childP ?childO . ?sib ?sibP ?sibO . ",
+  ?idTerm, " ?splitP ?splitO . }"
+), REQ, RES)
 """ .
 rdfop:Split rdfop:view rdfop:Split_view .
 
