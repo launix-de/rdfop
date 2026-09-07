@@ -52,6 +52,8 @@ rdfop:TableView_view a rdfop:EditorComponent ;
 .rdfop-tableview__table th { position:sticky; top:0; z-index:1; background:var(--panel); text-align:left; }
 .rdfop-tableview__table th, .rdfop-tableview__table td { padding:.6rem .75rem; border-bottom:1px solid var(--ring); vertical-align:top; }
 .rdfop-tableview__row { cursor:pointer; }
+.rdfop-tableview__row[draggable='true'] { cursor:grab; }
+.rdfop-tableview__row--dragging { opacity:.55; cursor:grabbing; }
 .rdfop-tableview__row:hover, .rdfop-tableview__row:focus { background:#f1f5f9; outline:none; }
 .rdfop-tableview__value + .rdfop-tableview__value::before { content:', '; }
 .rdfop-tableview__empty { padding:1rem; color:var(--muted); }
@@ -236,6 +238,25 @@ window.rdfopTableRowKey = function(event, row) {
     event.preventDefault();
     rdfopTableOpenRow(row);
   }
+};
+
+window.rdfopTableRowDragStart = function(event, row) {
+  if (!event || !row) return;
+  var resource = row.dataset.resource;
+  if (!resource) return;
+  var link = document.createElement('a');
+  link.href = row.dataset.rdfopUri || ('/view/' + encodeURIComponent(resource));
+  var uri = rdfopDragStartLink(event, link, {kind:'component'});
+  if (!uri || !event.dataTransfer) return;
+  var firstCell = row.querySelector('td');
+  var label = row.dataset.label || (firstCell && firstCell.textContent.trim()) || resource;
+  event.dataTransfer.setData('application/x-rdfop-tab-label', label);
+  row.classList.add('rdfop-tableview__row--dragging');
+};
+
+window.rdfopTableRowDragEnd = function(event, row) {
+  if (row) row.classList.remove('rdfop-tableview__row--dragging');
+  if (!window.__rdfopDragSession || !window.__rdfopDragSession.dropped) rdfopDragClear();
 };
 
 window.rdfopOpenViewInit = async function(root) {
@@ -602,7 +623,7 @@ BEGIN ?>data-runtime-filter-property='<?rdf PRINT HTML ?filterProperty ?>' data-
       <tbody><?rdf
       SELECT DISTINCT ?row WHERE { ?row a ?itemType } ORDER BY ?row
       BEGIN
-        ?><tr class='rdfop-tableview__row' tabindex='0' data-resource='<?rdf PRINT HTML ?row ?>' onclick='if(!event.target.closest(&quot;a,button,input,select&quot;))rdfopTableOpenRow(this)' onkeydown='rdfopTableRowKey(event,this)'><?rdf
+        ?><tr class='rdfop-tableview__row' tabindex='0' draggable='true' data-resource='<?rdf PRINT HTML ?row ?>' data-rdfop-uri='/view/<?rdf PRINT URL ?row ?>' onclick='if(!event.target.closest(&quot;a,button,input,select&quot;))rdfopTableOpenRow(this)' onkeydown='rdfopTableRowKey(event,this)' ondragstart='rdfopTableRowDragStart(event,this)' ondragend='rdfopTableRowDragEnd(event,this)'><?rdf
         SELECT ?column, ?order WHERE { ?column rdfop:order ?order . ?id rdfop:children ?column . ?column a rdfop:TableColumn } ORDER BY ?order
         BEGIN
           SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1
@@ -809,6 +830,7 @@ await helpers.insert([
   helpers.tabGroup(group),
   helpers.tab(group, pinnedTab, 'Overview', '1', pinned),
   helpers.htmlView(pinned, 'Pinned'),
+  `${helpers.sid(type)} a <${helpers.S}EntityType> .`,
   `${helpers.sid(type)} <${helpers.S}view> <${helpers.S}HTMLView_view> .`,
   `${helpers.sid(item)} a ${helpers.sid(type)} .`,
   `${helpers.sid(item)} ${helpers.sid(property)} "Case A" .`,
@@ -816,7 +838,7 @@ await helpers.insert([
 ].join('\n'));
 try {
   await helpers.goto(root);
-  const row = helpers.byId(table).locator('.rdfop-tableview__row');
+  const row = helpers.byId(table).locator(`.rdfop-tableview__row[data-resource="${item}"]`);
   await row.click();
   await expect(helpers.tabLabels(group)).toHaveCount(2);
   await expect(helpers.byId(group).locator('.rdfop-tabs__panel--active .rdfop-openview iframe')).toHaveCount(1);
@@ -830,6 +852,74 @@ try {
   page.once('dialog', dialog => dialog.accept());
   await caseTab.locator('.rdfop-tabs__close').click();
   await expect(helpers.byId(table).locator('.rdfop-tableview__row')).toHaveCount(1);
+} finally {
+  await helpers.cleanup(root);
+  await helpers.cleanup(item);
+  await helpers.cleanup(type);
+  await helpers.cleanup(property);
+}
+""" .
+
+rdfop:test_table_view_row_drags_to_tab_group a rdfop:PlaywrightTest ;
+  rdfop:testFor rdfop:TableView ;
+  rdfs:label "Table row exposes its resource URI and drags into a tab group" ;
+  rdfop:order "41.5" ;
+  rdfop:playwright """
+const root = helpers.id();
+const split = helpers.id();
+const left = helpers.id();
+const right = helpers.id();
+const table = helpers.id();
+const group = helpers.id();
+const pinnedTab = helpers.id();
+const pinned = helpers.id();
+const column = helpers.id();
+const type = helpers.id();
+const property = helpers.id();
+const item = helpers.id();
+await helpers.insert([
+  helpers.selector(root, split),
+  helpers.split(split, 'horizontal', '0.3', left, right),
+  helpers.selector(left, table),
+  helpers.selector(right, group),
+  `${helpers.sid(table)} a <${helpers.S}TableView> .`,
+  `${helpers.sid(table)} <${helpers.S}itemType> ${helpers.sid(type)} .`,
+  `${helpers.sid(table)} <${helpers.S}children> ${helpers.sid(column)} .`,
+  `${helpers.sid(column)} a <${helpers.S}TableColumn> .`,
+  `${helpers.sid(column)} <${helpers.S}order> "1" .`,
+  `${helpers.sid(column)} <${helpers.S}columnProperty> ${helpers.sid(property)} .`,
+  helpers.tabGroup(group),
+  helpers.tab(group, pinnedTab, 'Overview', '1', pinned),
+  helpers.htmlView(pinned, 'Pinned'),
+  `${helpers.sid(type)} a <${helpers.S}EntityType> .`,
+  `${helpers.sid(type)} <${helpers.S}view> <${helpers.S}HTMLView_view> .`,
+  `${helpers.sid(item)} a ${helpers.sid(type)} .`,
+  `${helpers.sid(item)} <${helpers.S}view> <${helpers.S}HTMLView_view> .`,
+  `${helpers.sid(item)} ${helpers.sid(property)} "Case A" .`,
+  `${helpers.sid(item)} <${helpers.S}html> "Dragged case" .`,
+].join('\n'));
+try {
+  await helpers.goto(root);
+  const row = helpers.byId(table).locator(`.rdfop-tableview__row[data-resource="${item}"]`);
+  await expect(row).toHaveAttribute('draggable', 'true');
+  await expect(row).toHaveAttribute('data-rdfop-uri', `/view/${encodeURIComponent(item)}`);
+  const bar = helpers.byId(group).locator('.rdfop-tabs__bar');
+  const box = await bar.boundingBox();
+  if (!box) throw new Error('missing tab bar bounding box');
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await row.dispatchEvent('dragstart', {dataTransfer});
+  expect(await dataTransfer.evaluate(dt => dt.getData('text/uri-list'))).toBe(`${baseURL}/view/${encodeURIComponent(item)}`);
+  expect(await dataTransfer.evaluate(dt => dt.getData('application/x-rdfop-tab-label'))).toBe('Case A');
+  await bar.dispatchEvent('dragover', {dataTransfer, clientX:box.x + box.width - 5, clientY:box.y + box.height / 2});
+  await bar.dispatchEvent('drop', {dataTransfer, clientX:box.x + box.width - 5, clientY:box.y + box.height / 2});
+  await row.dispatchEvent('dragend', {dataTransfer});
+  await expect(helpers.tabLabels(group)).toHaveCount(2);
+  await expect(helpers.byId(group).locator('.rdfop-tabs__panel--active iframe')).toHaveCount(1);
+  await expect(page.frameLocator(`[data-testid="${helpers.escapeAttr(item)}"] iframe`).locator('body')).toContainText('Dragged case');
+  await page.reload();
+  await expect(helpers.tabLabels(group)).toHaveCount(2);
+  await expect(helpers.byId(group).locator('.rdfop-tabs__panel--active iframe')).toHaveCount(1);
+  await expect(page.frameLocator(`[data-testid="${helpers.escapeAttr(item)}"] iframe`).locator('body')).toContainText('Dragged case');
 } finally {
   await helpers.cleanup(root);
   await helpers.cleanup(item);
