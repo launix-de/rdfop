@@ -743,6 +743,54 @@ END
     ))
 )))
 
+(define _rdfop_table_configuration_locked (lambda (id) (begin
+    (set locked (_query_single_value (concat
+        "SELECT ?locked WHERE { " (_rdf_ref id)
+        " <https://launix.de/rdfop/schema#configurationLocked> ?locked } LIMIT 1"
+    ) "?locked"))
+    (or (equal? locked "true") (equal? locked "1"))
+)))
+
+/* POST /rdfop-table-config-save — table configuration writes with a
+   server-side lock check. Runtime data edits continue to use /rdfop-save. */
+(rdfop_routes "/rdfop-table-config-save" (lambda (req res) (begin
+    ((res "header") "Content-Type" "text/plain")
+    (set bp (_parse_urlencoded_body (try (lambda () ((req "body"))) (lambda (e) ""))))
+    (set table_id (bp "id"))
+    (set del_ttl (bp "delete"))
+    (set ins_ttl (bp "insert"))
+    (if (or (nil? table_id) (equal? table_id "")) (begin
+        ((res "status") 400)
+        ((res "print") "missing table id")
+    ) (if (_rdfop_table_configuration_locked table_id) (begin
+        ((res "status") 403)
+        ((res "print") "Table configuration is locked.")
+    ) (begin
+        (set _table_save_state (newsession))
+        (_table_save_state "ok" true)
+        (_table_save_state "error" "")
+        (if (and (not (nil? del_ttl)) (not (equal? del_ttl "")))
+            (try (lambda () (_rdfop_delete_ttl "rdf" del_ttl)) (lambda (e) (begin
+                (_table_save_state "ok" false)
+                (_table_save_state "error" (concat e))
+            )))
+        )
+        (if (and (_table_save_state "ok") (not (nil? ins_ttl)) (not (equal? ins_ttl "")))
+            (try (lambda () (load_ttl "rdf" ins_ttl)) (lambda (e) (begin
+                (_table_save_state "ok" false)
+                (_table_save_state "error" (concat e))
+            )))
+        )
+        (if (_table_save_state "ok") (begin
+            ((res "status") 200)
+            ((res "print") "ok")
+        ) (begin
+            ((res "status") 500)
+            ((res "print") (concat "error: " (_table_save_state "error")))
+        ))
+    )))
+)))
+
 /* POST /rdfop-delete — deletes a node and its children recursively */
 (rdfop_routes "/rdfop-delete" (lambda (req res) (begin
     ((res "header") "Content-Type" "text/plain")

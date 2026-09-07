@@ -35,6 +35,10 @@ rdfop:target a rdf:Property ; rdfs:domain rdfop:TableAction ; rdfs:range rdf:Res
 rdfop:openTarget a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdf:Resource .
 rdfop:openAction a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdfop:Method .
 rdfop:openResource a rdf:Property ; rdfs:range rdf:Resource .
+rdfop:defaultSortColumn a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdfop:TableColumn .
+rdfop:defaultSortDirection a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdfs:Literal .
+rdfop:runtimeFilterProperty a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdf:Property .
+rdfop:configurationLocked a rdf:Property ; rdfs:domain rdfop:TableView ; rdfs:range rdfs:Literal .
 
 rdfop:TableView_view a rdfop:EditorComponent ;
   rdfop:css """
@@ -44,6 +48,7 @@ rdfop:TableView_view a rdfop:EditorComponent ;
 .rdfop-tableview__actions { display:flex; align-items:center; justify-content:flex-end; gap:.5rem; flex-wrap:wrap; }
 .rdfop-tableview__scroll { min-height:0; overflow:auto; border:1px solid var(--ring); border-radius:.65rem; background:var(--panel); }
 .rdfop-tableview__table { width:100%; border-collapse:collapse; }
+.rdfop-tableview[data-runtime-filter-property]:not([data-runtime-filter-ready]) .rdfop-tableview__table tbody { visibility:hidden; }
 .rdfop-tableview__table th { position:sticky; top:0; z-index:1; background:var(--panel); text-align:left; }
 .rdfop-tableview__table th, .rdfop-tableview__table td { padding:.6rem .75rem; border-bottom:1px solid var(--ring); vertical-align:top; }
 .rdfop-tableview__row { cursor:pointer; }
@@ -75,6 +80,39 @@ window.rdfopTableUniqueRows = function(rows, keys) {
     seen.add(key);
     return true;
   });
+};
+
+window.rdfopTableViewInit = async function(root) {
+  if (!root || root.dataset.tableInit === '1') return;
+  root.dataset.tableInit = '1';
+  var body = root.querySelector('.rdfop-tableview__table tbody');
+  if (!body) return;
+  var rows = Array.from(body.querySelectorAll('.rdfop-tableview__row'));
+  var filterProperty = root.dataset.runtimeFilterProperty || '';
+  if (filterProperty) {
+    var filterValue = root.dataset.runtimeFilterValue || '';
+    var matches = filterValue ? await _rdfopQuery(
+      'SELECT ?row WHERE { ?row ' + rdfopSid(filterProperty) + ' ' + rdfopSid(filterValue) + ' }'
+    ) : [];
+    var allowed = new Set(matches.map(function(match) { return match['?row']; }));
+    rows.filter(function(row) { return !allowed.has(row.dataset.resource); })
+      .forEach(function(row) { row.remove(); });
+    rows = rows.filter(function(row) { return allowed.has(row.dataset.resource); });
+    root.dataset.runtimeFilterReady = 'true';
+  }
+  var columnId = root.dataset.defaultSortColumn || '';
+  if (!columnId) return;
+  var direction = root.dataset.defaultSortDirection === 'desc' ? -1 : 1;
+  rows.sort(function(a, b) {
+    var aCell = a.querySelector('[data-column-id="' + CSS.escape(columnId) + '"]');
+    var bCell = b.querySelector('[data-column-id="' + CSS.escape(columnId) + '"]');
+    var aValue = aCell && aCell.dataset.sortValue || '';
+    var bValue = bCell && bCell.dataset.sortValue || '';
+    return direction * aValue.localeCompare(bValue, undefined, {numeric:true, sensitivity:'base'});
+  });
+  rows.forEach(function(row) { body.appendChild(row); });
+  /* TODO: allow temporary live sorting by clicking a column header; this must
+     affect only the current DOM view and must not persist table configuration. */
 };
 
 window.rdfopTableActionName = function(action) {
@@ -245,6 +283,10 @@ window.rdfopTableEditLoad = async function(root) {
     targetSelect.add(new Option('Tab group · ' + id, id));
   });
   targetSelect.value = targetSelect.dataset.value || 'https://launix.de/rdfop/schema#OverlayTarget';
+  var sortColumnSelect = root.querySelector('[data-field=defaultSortColumn]');
+  if (sortColumnSelect) sortColumnSelect.value = sortColumnSelect.dataset.value || '';
+  var sortDirectionSelect = root.querySelector('[data-field=defaultSortDirection]');
+  if (sortDirectionSelect) sortDirectionSelect.value = sortDirectionSelect.dataset.value || 'asc';
   var methodRows = rdfopTableUniqueRows(await _rdfopQuery(
     'SELECT ?method WHERE { ?method a <https://launix.de/rdfop/schema#Method> }'
   ), ['?method']);
@@ -300,6 +342,18 @@ window.rdfopTableEditLoadProperties = async function(root) {
     }
     select.value = current;
   });
+  var filterSelect = root.querySelector('[data-field=runtimeFilterProperty]');
+  if (filterSelect) {
+    var currentFilter = filterSelect.dataset.value || filterSelect.value || '';
+    filterSelect.replaceChildren(new Option('No runtime filter', ''));
+    rows.forEach(function(row) {
+      filterSelect.add(new Option(row['?label'] || row['?property'], row['?property']));
+    });
+    if (currentFilter && !rows.some(function(row) { return row['?property'] === currentFilter; })) {
+      filterSelect.add(new Option(currentFilter, currentFilter));
+    }
+    filterSelect.value = currentFilter;
+  }
 };
 
 window.rdfopTableEditAddColumn = async function(btn) {
@@ -365,6 +419,16 @@ window.rdfopTableEditSave = async function(btn) {
   resourceField('itemType', 'https://launix.de/rdfop/schema#itemType');
   resourceField('openTarget', 'https://launix.de/rdfop/schema#openTarget');
   resourceField('openAction', 'https://launix.de/rdfop/schema#openAction');
+  resourceField('defaultSortColumn', 'https://launix.de/rdfop/schema#defaultSortColumn');
+  resourceField('runtimeFilterProperty', 'https://launix.de/rdfop/schema#runtimeFilterProperty');
+
+  var sortDirection = root.querySelector('[data-field=defaultSortDirection]');
+  var oldSortDirection = sortDirection.dataset.value || '';
+  var newSortDirection = sortDirection.value || '';
+  if (oldSortDirection !== newSortDirection) {
+    if (oldSortDirection) deletes.push(rdfopSid(p.id) + ' <https://launix.de/rdfop/schema#defaultSortDirection> ' + JSON.stringify(oldSortDirection) + ' .');
+    if (newSortDirection) inserts.push(rdfopSid(p.id) + ' <https://launix.de/rdfop/schema#defaultSortDirection> ' + JSON.stringify(newSortDirection) + ' .');
+  }
 
   var label = root.querySelector('[data-field=label]');
   var oldLabel = label.dataset.value || '';
@@ -412,20 +476,38 @@ window.rdfopTableEditSave = async function(btn) {
       if (newValue) inserts.push(rdfopSid(id) + ' <' + field[1] + '> ' + newObject + ' .');
     });
   });
-  await rdfopSave(deletes.join('\n') || null, inserts.join('\n') || null);
+  var response = await fetch('/rdfop-table-config-save', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'id=' + encodeURIComponent(p.id) +
+      '&delete=' + encodeURIComponent(deletes.join('\n')) +
+      '&insert=' + encodeURIComponent(inserts.join('\n'))
+  });
+  if (!response.ok) {
+    var status = root.querySelector('.rdfop-tableedit__status');
+    if (status) status.textContent = await response.text();
+    return;
+  }
   await rdfopSwap(root, 'view');
 };
 """ ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 @PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 PARAMETER ?id "id"
+PARAMETER ?filter "filter"
 SELECT ?itemType WHERE { ?id rdfop:itemType ?itemType } LIMIT 1
 BEGIN
-?><div class='rdfop-c rdfop-tableview' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' <?rdf
+?><div class='rdfop-c rdfop-tableview' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;filter&quot;:<?rdf PRINT JSON ?filter ?>}' <?rdf
 SELECT ?target WHERE { ?id rdfop:openTarget ?target } LIMIT 1
 BEGIN ?>data-open-target='<?rdf PRINT HTML ?target ?>'<?rdf END ?> <?rdf
 SELECT ?action WHERE { ?id rdfop:openAction ?action } LIMIT 1
-BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?>>
+BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?> <?rdf
+SELECT ?sortColumn WHERE { ?id rdfop:defaultSortColumn ?sortColumn } LIMIT 1
+BEGIN ?>data-default-sort-column='<?rdf PRINT HTML ?sortColumn ?>'<?rdf END ?> <?rdf
+SELECT ?sortDirection WHERE { ?id rdfop:defaultSortDirection ?sortDirection } LIMIT 1
+BEGIN ?>data-default-sort-direction='<?rdf PRINT HTML ?sortDirection ?>'<?rdf END ?> <?rdf
+SELECT ?filterProperty WHERE { ?id rdfop:runtimeFilterProperty ?filterProperty } LIMIT 1
+BEGIN ?>data-runtime-filter-property='<?rdf PRINT HTML ?filterProperty ?>' data-runtime-filter-value='<?rdf PRINT HTML ?filter ?>'<?rdf END ?>>
   <div class='rdfop-tableview__head'>
     <h2><?rdf SELECT ?label WHERE { ?id rdfs:label ?label } LIMIT 1
     BEGIN ?><?rdf PRINT HTML ?label ?><?rdf
@@ -438,7 +520,10 @@ BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?>>
         ?><button class='btn primary' type='button' data-action='<?rdf PRINT HTML ?action ?>' data-target='<?rdf PRINT HTML ?target ?>' onclick='rdfopTableRunAction(this)'><?rdf PRINT HTML ?label ?></button><?rdf
         END
       END
-      ?><button class='btn' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>Configure</button>
+      ?><?rdf SELECT ?lock WHERE { ?id rdfop:configurationLocked ?lock } LIMIT 1
+      BEGIN
+      ELSE ?><button class='btn' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>Configure</button><?rdf
+      END ?>
     </div>
   </div>
   <div class='rdfop-tableview__scroll'>
@@ -448,7 +533,7 @@ BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?>>
       BEGIN
         SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1
         BEGIN
-          ?><th><?rdf
+          ?><th data-column-id='<?rdf PRINT HTML ?column ?>'><?rdf
           SELECT ?columnLabel WHERE { ?column rdfop:columnLabel ?columnLabel } LIMIT 1
           BEGIN ?><?rdf PRINT HTML ?columnLabel ?><?rdf
           ELSE
@@ -466,7 +551,7 @@ BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?>>
         BEGIN
           SELECT ?property WHERE { ?column rdfop:columnProperty ?property } LIMIT 1
           BEGIN
-            ?><td><?rdf SELECT DISTINCT ?value WHERE { ?row ?property ?value }
+            ?><td data-column-id='<?rdf PRINT HTML ?column ?>' <?rdf SELECT ?sortValue WHERE { ?row ?property ?sortValue } LIMIT 1 BEGIN ?>data-sort-value='<?rdf PRINT HTML ?sortValue ?>'<?rdf END ?>><?rdf SELECT DISTINCT ?value WHERE { ?row ?property ?value }
             BEGIN ?><span class='rdfop-tableview__value'><?rdf CALL render_link(?value, REQ, RES) ?></span><?rdf
             ELSE ?>&nbsp;<?rdf END ?></td><?rdf
           END
@@ -480,9 +565,9 @@ BEGIN ?>data-open-action='<?rdf PRINT HTML ?action ?>'<?rdf END ?>>
   </div>
 </div><?rdf
 ELSE
-?><div class='rdfop-c rdfop-tableview rdfop-tableview__empty' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+?><div class='rdfop-c rdfop-tableview rdfop-tableview__empty' data-testid='<?rdf PRINT HTML ?id ?>' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>,&quot;filter&quot;:<?rdf PRINT JSON ?filter ?>}'>
   <p>This table has no entity type yet.</p>
-  <button class='btn primary' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>Configure table</button>
+  <?rdf SELECT ?lock WHERE { ?id rdfop:configurationLocked ?lock } LIMIT 1 BEGIN ELSE ?><button class='btn primary' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;edit&quot;)'>Configure table</button><?rdf END ?>
 </div><?rdf
 END""" .
 
@@ -490,6 +575,10 @@ rdfop:TableView_edit a rdfop:EditorComponent ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 @PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 PARAMETER ?id "id"
+SELECT ?lock WHERE { ?id rdfop:configurationLocked ?lock } LIMIT 1
+BEGIN
+?><div class='rdfop-c rdfop-tableedit error' data-testid='<?rdf PRINT HTML ?id ?>:edit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>This table configuration is locked.</div><?rdf
+ELSE
 ?><div class='rdfop-c rdfop-tableedit' data-testid='<?rdf PRINT HTML ?id ?>:edit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <h2>Configure table</h2>
   <div class='rdfop-tableedit__grid'>
@@ -511,6 +600,25 @@ PARAMETER ?id "id"
         <option value='https://launix.de/rdfop/schema#view'>View</option>
         <option value='https://launix.de/rdfop/schema#edit'>Edit</option>
       </select>
+    </label>
+    <label>Default sort column
+      <select data-field='defaultSortColumn' <?rdf SELECT ?sortColumn WHERE { ?id rdfop:defaultSortColumn ?sortColumn } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?sortColumn ?>'<?rdf ELSE ?>data-value=''<?rdf END ?>>
+        <option value=''>No default sorting</option><?rdf
+        SELECT ?sortOption, ?sortOrder WHERE { ?id rdfop:children ?sortOption . ?sortOption a rdfop:TableColumn . ?sortOption rdfop:order ?sortOrder } ORDER BY ?sortOrder
+        BEGIN ?><option value='<?rdf PRINT HTML ?sortOption ?>'><?rdf SELECT ?sortLabel WHERE { ?sortOption rdfop:columnLabel ?sortLabel } LIMIT 1 BEGIN PRINT HTML ?sortLabel ELSE PRINT HTML ?sortOption END ?></option><?rdf END ?>
+      </select>
+    </label>
+    <label>Default sort direction
+      <select data-field='defaultSortDirection' <?rdf SELECT ?sortDirection WHERE { ?id rdfop:defaultSortDirection ?sortDirection } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?sortDirection ?>'<?rdf ELSE ?>data-value='asc'<?rdf END ?>>
+        <option value='asc'>Ascending</option>
+        <option value='desc'>Descending</option>
+      </select>
+    </label>
+    <label>Runtime filter property
+      <select data-field='runtimeFilterProperty' <?rdf SELECT ?filterProperty WHERE { ?id rdfop:runtimeFilterProperty ?filterProperty } LIMIT 1 BEGIN ?>data-value='<?rdf PRINT HTML ?filterProperty ?>'<?rdf ELSE ?>data-value=''<?rdf END ?>>
+        <option value=''>No runtime filter</option>
+      </select>
+      <span>Compared with the non-persisted <code>filter</code> request parameter.</span>
     </label>
   </div>
   <div>
@@ -557,7 +665,8 @@ PARAMETER ?id "id"
     <button class='btn' type='button' onclick='rdfopSwap(this.closest(&quot;.rdfop-c&quot;),&quot;view&quot;)'>Cancel</button>
   </div>
   <div class='rdfop-tableedit__status'></div>
-</div>""" .
+</div><?rdf
+END""" .
 
 rdfop:OpenView_view a rdfop:EditorComponent ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
@@ -707,8 +816,12 @@ try {
   await expect(edit.locator('[data-field=itemType]')).toHaveValue(type);
   await expect(edit.locator('[data-column-property]')).toHaveValue(property);
   await edit.locator('[data-field=label]').fill('New title');
+  await edit.locator('[data-field=defaultSortColumn]').selectOption(column);
+  await edit.locator('[data-field=defaultSortDirection]').selectOption('desc');
   await edit.getByRole('button', {name:'Save'}).click();
   await expect(helpers.byId(table).locator('h2')).toHaveText('New title');
+  await expect(helpers.byId(table)).toHaveAttribute('data-default-sort-column', column);
+  await expect(helpers.byId(table)).toHaveAttribute('data-default-sort-direction', 'desc');
 } finally {
   await helpers.cleanup(root);
   await helpers.cleanup(type);
@@ -762,6 +875,82 @@ try {
   await helpers.cleanup(root);
   await helpers.cleanup(type);
   await helpers.cleanup(property);
+}
+""" .
+
+rdfop:test_table_view_runtime_filter_sort_and_lock a rdfop:PlaywrightTest ;
+  rdfop:testFor rdfop:TableView ;
+  rdfs:label "Table view applies runtime filter, default sort, and configuration lock" ;
+  rdfop:order "44" ;
+  rdfop:playwright """
+const root = helpers.id();
+const table = helpers.id();
+const titleColumn = helpers.id();
+const dateColumn = helpers.id();
+const type = helpers.id();
+const titleProperty = helpers.id();
+const dateProperty = helpers.id();
+const caseProperty = helpers.id();
+const caseA = helpers.id();
+const caseB = helpers.id();
+const older = helpers.id();
+const newer = helpers.id();
+const foreign = helpers.id();
+await helpers.insert([
+  helpers.selector(root, table),
+  `${helpers.sid(table)} a <${helpers.S}TableView> .`,
+  `${helpers.sid(table)} <${helpers.S}itemType> ${helpers.sid(type)} .`,
+  `${helpers.sid(table)} <http://www.w3.org/2000/01/rdf-schema#label> "History" .`,
+  `${helpers.sid(table)} <${helpers.S}runtimeFilterProperty> ${helpers.sid(caseProperty)} .`,
+  `${helpers.sid(table)} <${helpers.S}defaultSortColumn> ${helpers.sid(dateColumn)} .`,
+  `${helpers.sid(table)} <${helpers.S}defaultSortDirection> "desc" .`,
+  `${helpers.sid(table)} <${helpers.S}configurationLocked> "true" .`,
+  `${helpers.sid(table)} <${helpers.S}children> ${helpers.sid(titleColumn)} .`,
+  `${helpers.sid(table)} <${helpers.S}children> ${helpers.sid(dateColumn)} .`,
+  `${helpers.sid(titleColumn)} a <${helpers.S}TableColumn> .`,
+  `${helpers.sid(titleColumn)} <${helpers.S}order> "1" .`,
+  `${helpers.sid(titleColumn)} <${helpers.S}columnProperty> ${helpers.sid(titleProperty)} .`,
+  `${helpers.sid(dateColumn)} a <${helpers.S}TableColumn> .`,
+  `${helpers.sid(dateColumn)} <${helpers.S}order> "2" .`,
+  `${helpers.sid(dateColumn)} <${helpers.S}columnProperty> ${helpers.sid(dateProperty)} .`,
+  `${helpers.sid(older)} a ${helpers.sid(type)} .`,
+  `${helpers.sid(older)} ${helpers.sid(titleProperty)} "Older" .`,
+  `${helpers.sid(older)} ${helpers.sid(dateProperty)} "2026-09-06T10:00:00.000Z" .`,
+  `${helpers.sid(older)} ${helpers.sid(caseProperty)} ${helpers.sid(caseA)} .`,
+  `${helpers.sid(newer)} a ${helpers.sid(type)} .`,
+  `${helpers.sid(newer)} ${helpers.sid(titleProperty)} "Newer" .`,
+  `${helpers.sid(newer)} ${helpers.sid(dateProperty)} "2026-09-07T10:00:00.000Z" .`,
+  `${helpers.sid(newer)} ${helpers.sid(caseProperty)} ${helpers.sid(caseA)} .`,
+  `${helpers.sid(foreign)} a ${helpers.sid(type)} .`,
+  `${helpers.sid(foreign)} ${helpers.sid(titleProperty)} "Foreign" .`,
+  `${helpers.sid(foreign)} ${helpers.sid(dateProperty)} "2026-09-08T10:00:00.000Z" .`,
+  `${helpers.sid(foreign)} ${helpers.sid(caseProperty)} ${helpers.sid(caseB)} .`,
+].join('\n'));
+try {
+  await helpers.goto(root);
+  await page.evaluate(({table, caseA}) => openOverlay(
+    '/rdfop-render?comp=' + encodeURIComponent('https://launix.de/rdfop/schema#TableView_view') +
+    '&id=' + encodeURIComponent(table) + '&filter=' + encodeURIComponent(caseA)
+  ), {table, caseA});
+  const renderedTable = page.locator('.overlay-content').getByTestId(table);
+  await expect(renderedTable).toHaveAttribute('data-runtime-filter-value', caseA);
+  const rows = renderedTable.locator('.rdfop-tableview__row');
+  await expect(rows).toHaveCount(2);
+  expect(await rows.evaluateAll(nodes => nodes.map(node => node.dataset.resource))).toEqual([newer, older]);
+  await expect(renderedTable.getByRole('button', {name:'Configure'})).toHaveCount(0);
+  const saveResponse = await request.post(`${baseURL}/rdfop-table-config-save`, {
+    form: {id:table, insert:`${helpers.sid(table)} <http://www.w3.org/2000/01/rdf-schema#label> "Changed" .`}
+  });
+  expect(saveResponse.status()).toBe(403);
+} finally {
+  await helpers.cleanup(root);
+  await helpers.cleanup(older);
+  await helpers.cleanup(newer);
+  await helpers.cleanup(foreign);
+  await helpers.cleanup(type);
+  await helpers.cleanup(titleProperty);
+  await helpers.cleanup(dateProperty);
+  await helpers.cleanup(caseProperty);
 }
 """ .
 
