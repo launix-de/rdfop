@@ -744,5 +744,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
   <script>
   /* component JS loaded from rdfop:js attributes */
   <?rdf CALL emit_component_js(REQ, RES) ?>
+  /* The initial document was rendered before component initializers existed. */
+  window.rdfopMountNode(document);
   </script>
 </body></html>

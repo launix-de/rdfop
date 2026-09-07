@@ -655,6 +655,9 @@ try {
   await row.click();
   await expect(helpers.tabLabels(group)).toHaveCount(2);
   await expect(helpers.byId(group).locator('.rdfop-tabs__panel--active .rdfop-openview iframe')).toHaveCount(1);
+  await page.reload();
+  await expect(helpers.tabLabels(group)).toHaveCount(2);
+  await expect(helpers.byId(group).locator('.rdfop-tabs__panel--active .rdfop-openview iframe')).toHaveCount(1);
   await row.click();
   await expect(helpers.tabLabels(group)).toHaveCount(2);
   const caseTab = helpers.byId(group).locator('.rdfop-tabs__tab', {hasText:'Case A'});
