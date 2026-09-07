@@ -258,10 +258,55 @@ window.rdfopOpenViewInit = async function(root) {
   }
 };
 
+window.__rdfopTableEditDrafts = window.__rdfopTableEditDrafts || {};
+
+window.rdfopTableEditCaptureDraft = function(root) {
+  var draft = {fields:{}, columns:{}, actions:{}};
+  root.querySelectorAll('[data-field]').forEach(function(field) {
+    draft.fields[field.dataset.field] = field.value;
+  });
+  root.querySelectorAll('[data-column-id]').forEach(function(row) {
+    draft.columns[row.dataset.columnId] = {
+      property: row.querySelector('[data-column-property]').value,
+      label: row.querySelector('[data-column-label]').value
+    };
+  });
+  root.querySelectorAll('[data-list-action-id]').forEach(function(row) {
+    draft.actions[row.dataset.listActionId] = {
+      label: row.querySelector('[data-list-action-label]').value,
+      method: row.querySelector('[data-list-action-method]').value,
+      target: row.querySelector('[data-list-action-target]').value
+    };
+  });
+  return draft;
+};
+
+window.rdfopTableEditApplyDraft = function(root, draft) {
+  if (!draft) return;
+  Object.keys(draft.fields || {}).forEach(function(name) {
+    var field = root.querySelector('[data-field="' + CSS.escape(name) + '"]');
+    if (field) field.value = draft.fields[name];
+  });
+  root.querySelectorAll('[data-column-id]').forEach(function(row) {
+    var value = draft.columns && draft.columns[row.dataset.columnId];
+    if (!value) return;
+    row.querySelector('[data-column-property]').value = value.property;
+    row.querySelector('[data-column-label]').value = value.label;
+  });
+  root.querySelectorAll('[data-list-action-id]').forEach(function(row) {
+    var value = draft.actions && draft.actions[row.dataset.listActionId];
+    if (!value) return;
+    row.querySelector('[data-list-action-label]').value = value.label;
+    row.querySelector('[data-list-action-method]').value = value.method;
+    row.querySelector('[data-list-action-target]').value = value.target;
+  });
+};
+
 window.rdfopTableEditLoad = async function(root) {
   if (!root || root.dataset.editInit === '1') return;
   root.dataset.editInit = '1';
   var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  var draft = window.__rdfopTableEditDrafts[p.id];
   var typeSelect = root.querySelector('[data-field=itemType]');
   var targetSelect = root.querySelector('[data-field=openTarget]');
   var typeRows = rdfopTableUniqueRows(await _rdfopQuery(
@@ -273,7 +318,8 @@ window.rdfopTableEditLoad = async function(root) {
     var option = new Option(row['?label'] || row['?type'], row['?type']);
     typeSelect.add(option);
   });
-  typeSelect.value = typeSelect.dataset.value || '';
+  var hasDraftType = draft && Object.prototype.hasOwnProperty.call(draft.fields || {}, 'itemType');
+  typeSelect.value = hasDraftType ? draft.fields.itemType : (typeSelect.dataset.value || '');
 
   var targetRows = rdfopTableUniqueRows(await _rdfopQuery(
     'SELECT ?target WHERE { ?target a <https://launix.de/rdfop/schema#TabGroup> }'
@@ -303,6 +349,8 @@ window.rdfopTableEditLoad = async function(root) {
     select.value = current;
   });
   await rdfopTableEditLoadProperties(root);
+  rdfopTableEditApplyDraft(root, draft);
+  if (draft) delete window.__rdfopTableEditDrafts[p.id];
 };
 
 window.rdfopTableEditLoadProperties = async function(root) {
@@ -359,24 +407,32 @@ window.rdfopTableEditLoadProperties = async function(root) {
 window.rdfopTableEditAddColumn = async function(btn) {
   var root = btn.closest('.rdfop-tableedit');
   var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  window.__rdfopTableEditDrafts[p.id] = rdfopTableEditCaptureDraft(root);
   var resp = await fetch('/rdfop-create', {
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body:'parent=' + encodeURIComponent(p.id) + '&type=' + encodeURIComponent('https://launix.de/rdfop/schema#TableColumn')
   });
-  if (!resp.ok) return;
+  if (!resp.ok) {
+    delete window.__rdfopTableEditDrafts[p.id];
+    return;
+  }
   await rdfopSwap(root, 'edit');
 };
 
 window.rdfopTableEditAddAction = async function(btn) {
   var root = btn.closest('.rdfop-tableedit');
   var p = JSON.parse(root.dataset.rdfopParams || '{}');
+  window.__rdfopTableEditDrafts[p.id] = rdfopTableEditCaptureDraft(root);
   var resp = await fetch('/rdfop-create', {
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body:'parent=' + encodeURIComponent(p.id) + '&type=' + encodeURIComponent('https://launix.de/rdfop/schema#TableAction')
   });
-  if (!resp.ok) return;
+  if (!resp.ok) {
+    delete window.__rdfopTableEditDrafts[p.id];
+    return;
+  }
   await rdfopSwap(root, 'edit');
 };
 
@@ -818,6 +874,14 @@ try {
   await edit.locator('[data-field=label]').fill('New title');
   await edit.locator('[data-field=defaultSortColumn]').selectOption(column);
   await edit.locator('[data-field=defaultSortDirection]').selectOption('desc');
+  await edit.locator('[data-field=runtimeFilterProperty]').selectOption(property);
+  await edit.getByRole('button', {name:'Add column'}).click();
+  await expect(edit.locator('[data-column-id]')).toHaveCount(2);
+  await expect(edit.locator('[data-field=label]')).toHaveValue('New title');
+  await expect(edit.locator('[data-field=defaultSortColumn]')).toHaveValue(column);
+  await expect(edit.locator('[data-field=defaultSortDirection]')).toHaveValue('desc');
+  await expect(edit.locator('[data-field=runtimeFilterProperty]')).toHaveValue(property);
+  await expect(edit.locator(`[data-column-id="${column}"] [data-column-property]`)).toHaveValue(property);
   await edit.getByRole('button', {name:'Save'}).click();
   await expect(helpers.byId(table).locator('h2')).toHaveText('New title');
   await expect(helpers.byId(table)).toHaveAttribute('data-default-sort-column', column);
@@ -983,7 +1047,14 @@ try {
   await expect(edit.locator('[data-list-action-label]')).toHaveValue('Create case');
   await expect(edit.locator('[data-list-action-method]')).toHaveValue(`${helpers.S}create`);
   await expect(edit.locator('[data-list-action-target]')).toHaveValue(type);
-  await expect(edit.getByRole('button', {name:'Add action'})).toHaveCount(1);
+  await edit.locator('[data-field=label]').fill('Changed table title');
+  await edit.locator('[data-list-action-label]').fill('Changed action');
+  await edit.getByRole('button', {name:'Add action'}).click();
+  await expect(edit.locator('[data-list-action-id]')).toHaveCount(2);
+  await expect(edit.locator('[data-field=label]')).toHaveValue('Changed table title');
+  await expect(edit.locator(`[data-list-action-id="${action}"] [data-list-action-label]`)).toHaveValue('Changed action');
+  await expect(edit.locator(`[data-list-action-id="${action}"] [data-list-action-method]`)).toHaveValue(`${helpers.S}create`);
+  await expect(edit.locator(`[data-list-action-id="${action}"] [data-list-action-target]`)).toHaveValue(type);
 } finally {
   await helpers.cleanup(root);
   await helpers.cleanup(type);
