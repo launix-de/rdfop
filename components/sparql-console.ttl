@@ -57,12 +57,19 @@ window.rdfopSparqlRenderCell = async function(td, value) {
   if (!text) return;
   if (!(await window.rdfopSparqlCanLink(text))) return;
   var a = document.createElement('a');
-  a.href = '#';
+  a.href = '/view/' + encodeURIComponent(text);
+  a.draggable = true;
   a.dataset.rdfopId = text;
   a.textContent = text;
   a.onclick = function(event) {
     event.preventDefault();
     rdfopOverlay(this);
+  };
+  a.ondragstart = function(event) {
+    rdfopDragStartLink(event, this, {kind:'component'});
+  };
+  a.ondragend = function() {
+    if (!window.__rdfopDragSession || !window.__rdfopDragSession.dropped) rdfopDragClear();
   };
   td.replaceChildren(a);
 };
@@ -181,7 +188,7 @@ try {
 """ .
 
 rdfop:test_sparql_console_renders_overlay_links_for_entities a rdfop:PlaywrightTest ;
-  rdfs:label "SPARQL Console renders entity values as overlay links" ;
+  rdfs:label "SPARQL Console renders entities as navigable, draggable overlay links" ;
   rdfop:testFor rdfop:SPARQLConsole ;
   rdfop:order "6" ;
   rdfop:playwright """
@@ -198,8 +205,13 @@ try {
   const objectLink = row.locator('td').nth(1).locator('a');
   await expect(objectLink).toHaveCount(1);
   await expect(objectLink).toHaveText(`${helpers.S}SPARQLConsole`);
-  await expect(objectLink).toHaveAttribute('href', '#');
+  await expect(objectLink).toHaveAttribute('href', `/view/${encodeURIComponent(`${helpers.S}SPARQLConsole`)}`);
   await expect(objectLink).toHaveAttribute('data-rdfop-id', `${helpers.S}SPARQLConsole`);
+  await expect(objectLink).toHaveAttribute('draggable', 'true');
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await objectLink.dispatchEvent('dragstart', {dataTransfer});
+  expect(await dataTransfer.evaluate(dt => dt.getData('text/uri-list'))).toBe(`${baseURL}/view/${encodeURIComponent(`${helpers.S}SPARQLConsole`)}`);
+  await objectLink.dispatchEvent('dragend', {dataTransfer});
 } finally {
   await helpers.cleanup(id);
 }

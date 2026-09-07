@@ -87,7 +87,7 @@ export function createHelpers({ page, request, baseURL }) {
       await target.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await target.dispatchEvent('drop', { dataTransfer, clientX, clientY });
       await source.dispatchEvent('dragend', { dataTransfer });
-      await page.waitForTimeout(150);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async dragComponentViaTab(sourceSelectorId, hoverTabId, targetSelectorId, zone = 'center', hoverMs = 900) {
       const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
@@ -112,7 +112,7 @@ export function createHelpers({ page, request, baseURL }) {
       await target.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await target.dispatchEvent('drop', { dataTransfer, clientX, clientY });
       await source.dispatchEvent('dragend', { dataTransfer });
-      await page.waitForTimeout(200);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async dragComponentToTabBar(sourceSelectorId, groupId) {
       const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
@@ -129,7 +129,7 @@ export function createHelpers({ page, request, baseURL }) {
       await bar.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await bar.dispatchEvent('drop', { dataTransfer, clientX, clientY });
       await source.dispatchEvent('dragend', { dataTransfer });
-      await page.waitForTimeout(200);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async dragComponentToTabHeader(sourceSelectorId, targetTabId) {
       const source = this.byId(sourceSelectorId).locator('.rdfop-selector__move');
@@ -146,7 +146,7 @@ export function createHelpers({ page, request, baseURL }) {
       await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
       await source.dispatchEvent('dragend', { dataTransfer });
-      await page.waitForTimeout(200);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async dragExternalComponentToTabHeader({ contentId, sourcePayload, targetTabId, side = 'before', tabLabel = '' }) {
       const targetTab = this.tabById(targetTabId);
@@ -171,7 +171,7 @@ export function createHelpers({ page, request, baseURL }) {
       await targetTab.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
       await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
-      await page.waitForTimeout(250);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async dragExternalUrlToPalette(targetSelectorId, url) {
       const target = this.byId(targetSelectorId);
@@ -188,7 +188,7 @@ export function createHelpers({ page, request, baseURL }) {
       await target.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
       await target.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await target.dispatchEvent('drop', { dataTransfer, clientX, clientY });
-      await page.waitForTimeout(250);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async dragExternalUrlToTabHeader(targetTabId, url, side = 'before') {
       const targetTab = this.tabById(targetTabId);
@@ -205,7 +205,7 @@ export function createHelpers({ page, request, baseURL }) {
       await targetTab.dispatchEvent('dragenter', { dataTransfer, clientX, clientY });
       await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
-      await page.waitForTimeout(1000);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     async reorderTab(dragTabId, targetTabId, side = 'before') {
       const dragTab = this.tabById(dragTabId);
@@ -221,7 +221,7 @@ export function createHelpers({ page, request, baseURL }) {
       await targetTab.dispatchEvent('dragover', { dataTransfer, clientX, clientY });
       await targetTab.dispatchEvent('drop', { dataTransfer, clientX, clientY });
       await dragTab.dispatchEvent('dragend', { dataTransfer });
-      await page.waitForTimeout(200);
+      await page.waitForFunction(() => window.__rdfopDropPending === false, null, { timeout: 10000 });
     },
     textContent(locator) {
       return locator.evaluateAll(nodes => nodes.map(node => node.textContent?.trim() || ''));

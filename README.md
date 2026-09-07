@@ -4,6 +4,75 @@
 
 RDFOP is a feature oriented programming framework based on RDF (resource description format). It is a *universal low code tool* which means you have a WYSIWIG editor and you can edit every aspect of the software. A software is purely described by data in RDF format.
 
+## Architecture Guide
+
+RDF is the source of truth for both application data and UI layout. The browser
+renders RDFHP component fragments and persists user actions back into the RDF
+graph; a reload must reconstruct the same committed state.
+
+The central architectural contracts are documented in
+[docs/architecture.md](docs/architecture.md), including:
+
+- generic `/<action>/<id>` resource routing and the separate fragment endpoint;
+- component resolution, snippet wrappers, and SPA remounting;
+- `ComponentSelector`, `Split`, and `TabGroup` ownership semantics;
+- URI-based drag and drop and its move-versus-copy rules;
+- mutation, cleanup, refresh, and reload invariants;
+- the `TableView` row and open-target contract.
+
+Repository-wide implementation invariants for coding agents and contributors
+are summarized in [AGENTS.md](AGENTS.md).
+
+### Building an Application
+
+An RDFOP application is primarily an RDF schema plus an RDF instance graph:
+
+1. Define domain types and properties in Turtle.
+2. Bind each renderable type to an `rdfop:view` and, where needed, an
+   `rdfop:edit` component.
+3. Compose the `main` layout from `Split`, `TabGroup`, `ComponentSelector`, and
+   domain-facing components such as `TableView`.
+4. Declare application actions as `rdfop:Method` resources and attach their
+   RDFHP implementations directly to a resource or to its type.
+5. Persist all user-visible state changes as RDF mutations; rendering the graph
+   again must reproduce the application state.
+
+Small applications can be assembled almost entirely from the built-in
+components. A custom `rdfop:EditorComponent` is needed when the domain requires
+its own query, markup, or interaction. Component definitions are themselves RDF:
+the built-in component editor edits their RDFHP template, CSS, and JavaScript and
+previews the result against a selected resource. Application features should
+therefore normally be developed as editable RDFHP components and methods rather
+than as additions to the Scheme server. See
+[Building an application](docs/architecture.md#8-building-an-application) for a
+minimal schema and layout example.
+
+The browser starts with one rendered component, conventionally the resource
+`main`. That component composes the rest of the interface from RDF layout nodes:
+selectors provide user-configurable palettes, while tab groups, splits, and
+editors provide larger work areas.
+
+Every rendered component occupies its own `.rdfop-c` DOM element. It can ask
+`/rdfop-render` for fresh HTML and replace only that element through
+`rdfopSwap(...)`. Components may contain further components; because each child
+has its own component root and render parameters, it can be refreshed or
+switched independently of its parent.
+
+RDF resources should appear as real action links wherever practical. Their URLs
+are also the common drag payload, so an object can be opened, dragged into a
+split or tab, assigned to a selector, or dropped into a compatible resource
+selection field. Drop targets validate the resource and persist the resulting
+RDF relation rather than merely moving DOM nodes.
+
+`TableView` is the central application-development component for every list of
+entities. New list requirements belong in the shared TableView—sorting,
+filtering, virtual scrolling, datatype-aware cells, list/chip presentation,
+global actions, and per-item actions—not in application-specific list widgets.
+Its RDF configuration selects the entity type, filter, ordering, properties,
+cell presentation, and interactions. The same configuration has an editor;
+whether a user may invoke it must ultimately be controlled through user
+capabilities, allowing both adaptable and fixed applications.
+
 ## Knowledge Bases and Triple Stores
 
 To store data of any kind, a so-called _knowledge base_ is used.
@@ -155,6 +224,7 @@ The framework provides these global functions:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/<action>/<id>` | GET | Invoke an RDF-defined resource action; `view` renders the full page shell |
 | `/rdfop-render?id=...&mode=...` | GET | Render a component and return HTML |
 | `/rdfop-save` | POST | Delete and/or insert triples (`delete=TTL&insert=TTL`) |
 | `/rdfop-create` | POST | Create a new child entity under a parent |
@@ -173,7 +243,10 @@ The current UI is centered around a few self-describing layout primitives:
 - `rdfop:TableView` / `rdfop:TableColumn` / `rdfop:TableAction` — type-based tables with configurable columns, open targets, and toolbar actions
 - `rdfop:HTMLView`, `rdfop:Website`, `rdfop:Browser`, `rdfop:Explorer`, `rdfop:Settings`, `rdfop:SPARQLConsole`, `rdfop:TTLImport`
 
-Drag and drop is URI-based. Internal drags use `/view/<id>` URLs; external `http/https` links can be dropped into palettes or tab bars and are materialized as `rdfop:Website` nodes.
+Drag and drop is URI-based. Resource URLs generally follow `/<action>/<id>`.
+The current component-drag protocol specifically transports the resource's
+`view` action URL; external `http/https` links can be dropped into palettes or
+tab bars and are materialized as `rdfop:Website` nodes.
 
 `TableView` instances select rows by `rdfop:itemType`. Their ordered
 `rdfop:TableColumn` children name direct RDF properties. `rdfop:openTarget`

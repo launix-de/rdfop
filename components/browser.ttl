@@ -367,17 +367,12 @@ window.rdfopBrowserInit = function(el) {
   });
 };
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function(){ window.rdfopBrowserInit(document); });
-} else {
-  window.rdfopBrowserInit(document);
-}
 """ ;
   rdfop:componentTemplate """@PREFIX rdfop: <https://launix.de/rdfop/schema#> .
 PARAMETER ?id "id"
 SELECT ?url WHERE { ?id rdfop:url ?url }
 BEGIN
-?><div class='rdfop-c rdfop-browser' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-initial-url='<?rdf PRINT HTML ?url ?>'>
+?><div class='rdfop-c rdfop-browser' data-rdfop-init='rdfopBrowserInit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}' data-initial-url='<?rdf PRINT HTML ?url ?>'>
   <div class='rdfop-browser__bar'>
     <button class='rdfop-browser__btn' data-action='back' onclick='rdfopBrowserBack(this)' title='Back'>&larr;</button>
     <button class='rdfop-browser__btn' data-action='forward' onclick='rdfopBrowserForward(this)' title='Forward'>&rarr;</button>
@@ -394,7 +389,7 @@ BEGIN
   </div>
 </div><?rdf
 ELSE
-?><div class='rdfop-c rdfop-browser' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
+?><div class='rdfop-c rdfop-browser' data-rdfop-init='rdfopBrowserInit' data-rdfop-params='{&quot;id&quot;:<?rdf PRINT JSON ?id ?>}'>
   <div class='rdfop-browser__bar'>
     <button class='rdfop-browser__btn' data-action='back' onclick='rdfopBrowserBack(this)' title='Back' disabled>&larr;</button>
     <button class='rdfop-browser__btn' data-action='forward' onclick='rdfopBrowserForward(this)' title='Forward' disabled>&rarr;</button>

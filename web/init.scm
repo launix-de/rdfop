@@ -244,7 +244,7 @@ this module requires to load at least memcp/lib/rdf.scm first; better import mem
 PARAMETER ?value \"value\"
 SELECT ?t WHERE { ?value a ?t }
 BEGIN
-?><a href='#' data-rdfop-id='<?rdf PRINT HTML ?value ?>' onclick='event.preventDefault();rdfopOverlay(this)'><?rdf PRINT HTML ?value ?></a><?rdf
+?><a href='/view/<?rdf PRINT URL ?value ?>' data-rdfop-id='<?rdf PRINT HTML ?value ?>' draggable='true' onclick='event.preventDefault();rdfopOverlay(this)' ondragstart='rdfopDragStartLink(event,this,{kind:&quot;component&quot;})' ondragend='if(!window.__rdfopDragSession||!window.__rdfopDragSession.dropped)rdfopDragClear()'><?rdf PRINT HTML ?value ?></a><?rdf
 ELSE
 PRINT HTML ?value
 END
@@ -256,6 +256,25 @@ END
     (req "query" _q)
     (set print (res "print"))
     (eval _render_link_tpl)
+)))
+
+/* Generic RDFHP primitives for actions which need one atomic SPARQL update.
+   Keeping the update in the shared planner avoids mutating storage from inside
+   an RDFHP SELECT callback. */
+(rdf_functions "rdf_term" (lambda (value) (begin
+    (set text (concat value))
+    (if (regexp_test text "[<>{}\\\"\\r\\n\\t ]")
+        (error "rdf_term: invalid resource identifier")
+        (if (match text (regex "_:" _) true false)
+            text
+            (if (match text (regex ":" _) true false) (concat "<" text ">") text)
+        )
+    )
+)))
+(rdf_functions "rdf_update" (lambda (query req res) (begin
+    (set formula (parse_sparql "rdf" (concat query)))
+    (eval formula)
+    nil
 )))
 
 /* emit aggregated component assets directly from the RDF store.
@@ -318,17 +337,20 @@ END
 
 (define _selector_assign_server (lambda (selector_id next_id prev_id) (begin
     (set sid (_rdf_ref selector_id))
-    (set del_ttl "")
     (set ins_ttl "")
     (if (and (not (nil? sid)) (not (nil? prev_id))) (begin
-        (set del_ttl (concat del_ttl sid " <https://launix.de/rdfop/schema#selectedNode> " (_rdf_ref prev_id) " .\n"))
-        (set del_ttl (concat del_ttl sid " <https://launix.de/rdfop/schema#children> " (_rdf_ref prev_id) " .\n"))
+        (set prev_ref (_rdf_ref prev_id))
+        (eval (parse_sparql "rdf" (concat
+            "DELETE { " sid " <https://launix.de/rdfop/schema#selectedNode> " prev_ref " . "
+            sid " <https://launix.de/rdfop/schema#children> " prev_ref " . } WHERE { "
+            sid " <https://launix.de/rdfop/schema#selectedNode> " prev_ref " . "
+            sid " <https://launix.de/rdfop/schema#children> " prev_ref " . }"
+        )))
     ))
     (if (and (not (nil? sid)) (not (nil? next_id))) (begin
         (set ins_ttl (concat ins_ttl sid " <https://launix.de/rdfop/schema#selectedNode> " (_rdf_ref next_id) " .\n"))
         (set ins_ttl (concat ins_ttl sid " <https://launix.de/rdfop/schema#children> " (_rdf_ref next_id) " .\n"))
     ))
-    (if (not (equal? del_ttl "")) (_rdfop_delete_ttl "rdf" del_ttl))
     (if (not (equal? ins_ttl "")) (load_ttl "rdf" ins_ttl))
 )))
 
@@ -336,14 +358,20 @@ END
     (_query_single_value (concat "SELECT ?parent WHERE { ?parent <https://launix.de/rdfop/schema#children> " (_rdf_ref child_id) " } LIMIT 1") "?parent")
 ))
 
-(define _selector_remove_content_server (lambda (selector_id content_id) (begin
-    (_selector_assign_server selector_id nil content_id)
-    (set parent_id (_find_parent_by_child selector_id))
-    (if (not (nil? parent_id)) (begin
-        (set _params (newsession))
-        (_params "child" selector_id)
-        (_dispatch_action "onChildRemoved" parent_id _params nil)
-    ))
+(define _selector_remove_content_server (lambda (selector_id content_id parent_id) (begin
+    (if (nil? parent_id)
+        (begin
+            (set _params (newsession))
+            (_params "child" content_id)
+            (_dispatch_action "onChildRemoved" selector_id _params nil)
+        )
+        (begin
+            (_selector_assign_server selector_id nil content_id)
+            (set _params (newsession))
+            (_params "child" selector_id)
+            (_dispatch_action "onChildRemoved" parent_id _params nil)
+        )
+    )
 )))
 
 /* === Component rendering ===
@@ -521,38 +549,17 @@ END
 
 /* GET /rdfop-playwright-tests — exposes embedded Playwright tests from the RDF store */
 (rdfop_routes "/rdfop-playwright-tests" (lambda (req res) (begin
-    ((res "header") "Content-Type" "application/json")
+    ((res "header") "Content-Type" "application/x-ndjson")
     ((res "status") 200)
-    (define _playwright_test_prop (lambda (id prop) (begin
-        (set _value (newsession))
-        (try (lambda () (begin
-            (define resultrow (lambda (o) (_value "v" (o "?v"))))
-            (eval (parse_sparql "rdf" (concat
-                "SELECT ?v WHERE { <" id "> <" prop "> ?v } LIMIT 1"
-            )))
-        )) (lambda (e) nil))
-        (_value "v")
+    (define resultrow (res "jsonl"))
+    (eval (parse_sparql "rdf" (concat
+        "SELECT ?id, ?label, ?target, ?ord, ?code WHERE { "
+        "?id a <https://launix.de/rdfop/schema#PlaywrightTest> . "
+        "?id <http://www.w3.org/2000/01/rdf-schema#label> ?label . "
+        "?id <https://launix.de/rdfop/schema#testFor> ?target . "
+        "?id <https://launix.de/rdfop/schema#order> ?ord . "
+        "?id <https://launix.de/rdfop/schema#playwright> ?code }"
     )))
-    (set _first (newsession))
-    (_first "v" true)
-    ((res "print") "[")
-    (define resultrow (lambda (o) (begin
-        (set test_id (o "?id"))
-        (set label (coalesce (_playwright_test_prop test_id "http://www.w3.org/2000/01/rdf-schema#label") test_id))
-        (set target (_playwright_test_prop test_id "https://launix.de/rdfop/schema#testFor"))
-        (set ord (coalesce (_playwright_test_prop test_id "https://launix.de/rdfop/schema#order") ""))
-        (set code (_playwright_test_prop test_id "https://launix.de/rdfop/schema#playwright"))
-        (if (_first "v") (_first "v" false) ((res "print") ","))
-        ((res "print") "{"
-            "\"id\":" (json_encode test_id) ","
-            "\"label\":" (json_encode label) ","
-            "\"for\":" (json_encode target) ","
-            "\"order\":" (json_encode ord) ","
-            "\"code\":" (json_encode code)
-        "}")
-    )))
-    (eval (parse_sparql "rdf" "SELECT ?id WHERE { ?id a <https://launix.de/rdfop/schema#PlaywrightTest> }"))
-    ((res "print") "]")
 )))
 
 /* POST /rdfop-source-cleanup — server-side cleanup of the drag source.
@@ -562,6 +569,7 @@ END
     (set bp (_parse_urlencoded_body (try (lambda () ((req "body"))) (lambda (e) ""))))
     (set source_kind (bp "sourceKind"))
     (set selector_id (bp "sourceSelectorId"))
+    (set parent_id (bp "sourceParentId"))
     (set tab_id (bp "sourceTabId"))
     (set child_id (bp "sourceChildId"))
     (set content_id (bp "sourceContentId"))
@@ -576,7 +584,7 @@ END
                 (_selector_assign_server selector_id nil content_id)
                 (if (and (not (nil? replacement_id)) (not (equal? replacement_id content_id)))
                     (_selector_assign_server selector_id replacement_id content_id)
-                    (_selector_remove_content_server selector_id content_id)
+                    (_selector_remove_content_server selector_id content_id parent_id)
                 )
             )
             ((res "status") 200)
@@ -593,7 +601,7 @@ END
                     (set _params (newsession))
                     (_params "child" child_id)
                     (_dispatch_action "onChildRemoved" tab_id _params nil)
-                ) (_selector_remove_content_server child_id content_id))
+                ) (_selector_remove_content_server child_id content_id tab_id))
             )
             ((res "status") 200)
             ((res "print") "ok")
@@ -940,7 +948,8 @@ END
 
 
 
-(serve 3443 http_handler)
+(set rdfop_port (arg "api-port" "3443"))
+(serve rdfop_port http_handler)
 (print "")
-(print "listening on http://localhost:3443")
+(print "listening on http://localhost:" rdfop_port)
 (print "")
