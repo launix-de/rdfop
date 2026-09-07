@@ -16,7 +16,7 @@ rdfop:selectedNode a rdf:Property ; rdfs:domain rdfop:ComponentSelector ; rdfs:r
 rdfop:ComponentSelector rdfop:view rdfop:ComponentSelector_view .
 rdfop:ComponentSelector rdfop:onChildRemoved """
 PARAMETER ?removedChild "child"
-SELECT ?gone WHERE { ?id rdfop:children ?removedChild }
+SELECT ?removedChild WHERE { ?id rdfop:children ?removedChild }
 BEGIN
   DELETE { ?id rdfop:children ?removedChild }
   DELETE { ?id rdfop:selectedNode ?removedChild }
