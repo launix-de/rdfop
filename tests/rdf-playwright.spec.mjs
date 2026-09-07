@@ -14,6 +14,18 @@ function sortTests(cases) {
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
+test('UUID generation falls back without crypto.randomUUID', async ({ page, baseURL }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await page.goto(`${baseURL}/view/main`);
+  const uuid = await page.evaluate(() => window.rdfopUUID());
+  expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
 test('embedded RDF Playwright suite', async ({ page, request, baseURL }) => {
   test.setTimeout(120000);
   const resp = await request.get(`${baseURL}/rdfop-playwright-tests`);

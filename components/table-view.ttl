@@ -152,9 +152,9 @@ window.rdfopTableOpenInTabs = async function(targetId, resource, action, label) 
     return existing;
   }
 
-  var tabId = 'urn:uuid:' + crypto.randomUUID();
-  var selectorId = 'urn:uuid:' + crypto.randomUUID();
-  var viewId = 'urn:uuid:' + crypto.randomUUID();
+  var tabId = 'urn:uuid:' + rdfopUUID();
+  var selectorId = 'urn:uuid:' + rdfopUUID();
+  var viewId = 'urn:uuid:' + rdfopUUID();
   var order = String(Date.now());
   var ttl = [
     target + ' <' + S + 'children> ' + rdfopSid(tabId) + ' .',
