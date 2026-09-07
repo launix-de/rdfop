@@ -315,6 +315,25 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
         return String(id || '').includes(':') ? '<' + id + '>' : id;
       };
 
+      window.rdfopUUID = function() {
+        var cryptoApi = globalThis.crypto;
+        if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+          return cryptoApi.randomUUID();
+        }
+        var bytes = new Uint8Array(16);
+        if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+          cryptoApi.getRandomValues(bytes);
+        } else {
+          for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+        }
+        bytes[6] = (bytes[6] & 15) | 64;
+        bytes[8] = (bytes[8] & 63) | 128;
+        return Array.from(bytes, function(byte, index) {
+          var separator = index === 4 || index === 6 || index === 8 || index === 10 ? '-' : '';
+          return separator + byte.toString(16).padStart(2, '0');
+        }).join('');
+      };
+
       window._rdfopQuery = async function(sparql) {
         var resp = await fetch('/rdf', {
           method: 'POST',
@@ -474,7 +493,7 @@ WHERE { OPTIONAL { ${iri} rdfop:pageTitle ?oldTitle } OPTIONAL { ${iri} rdfop:pa
 
       window.rdfopCreateDetachedWebsite = async function(url) {
         if (!url) return null;
-        var id = 'urn:uuid:' + crypto.randomUUID();
+        var id = 'urn:uuid:' + rdfopUUID();
         console.log('[rdfop-dnd]', 'create-detached-website', { id: id, url: url });
         await rdfopSave(
           null,
